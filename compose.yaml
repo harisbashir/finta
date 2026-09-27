@@ -1,0 +1,41 @@
+# Finta with automatic HTTPS (Caddy + Let's Encrypt).
+#   1. Point a DNS record (e.g. home.example.com) at this machine; open ports 80 and 443.
+#   2. cp .env.example .env   and set DOMAIN, APP_URL (and TZ).
+#   3. docker compose up -d   then   docker compose logs finta   to read your setup code.
+services:
+  finta:
+    build: .
+    image: finta:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      TRUST_PROXY: "true"
+    volumes:
+      - finta-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    expose: ["3000"]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on: [finta]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  finta-data:
+  caddy-data:
+  caddy-config:

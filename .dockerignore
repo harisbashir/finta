@@ -1,0 +1,12 @@
+.git
+.github
+data
+backups
+node_modules
+test
+docs
+*.md
+.env
+.env.*
+Caddyfile
+compose*.yaml

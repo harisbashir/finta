@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3A7BFF"/>
+      <stop offset="1" stop-color="#1D4ED8"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".18"/>
+      <stop offset=".5" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="228" fill="url(#bg)"/>
+  <rect width="1024" height="1024" rx="228" fill="url(#shine)"/>
+  <!-- house -->
+  <path d="M512 214 L812 452 Q828 465 828 486 L828 770 Q828 810 788 810 L236 810 Q196 810 196 770 L196 486 Q196 465 212 452 Z" fill="#fff"/>
+  <!-- the month strip: bills · spent · left -->
+  <rect x="300" y="560" width="424" height="76" rx="38" fill="#E8EEFB"/>
+  <path d="M338 560 H486 V636 H338 A38 38 0 0 1 338 560 Z" fill="#5856D6"/>
+  <rect x="496" y="560" width="92" height="76" fill="#FF9500"/>
+  <path d="M598 560 H686 A38 38 0 0 1 686 636 H598 Z" fill="#34C759"/>
+</svg>

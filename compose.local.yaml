@@ -1,0 +1,23 @@
+# Finta on your own machine or LAN, plain HTTP, no proxy. Not for the public internet.
+#   docker compose -f compose.local.yaml up -d --build
+#   docker compose -f compose.local.yaml logs finta     # setup code
+services:
+  finta:
+    build: .
+    image: finta:latest
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      APP_URL: http://localhost:3000
+      ALLOW_INSECURE_HTTP: "true"
+      TZ: ${TZ:-America/Toronto}
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - finta-data:/data
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+volumes:
+  finta-data:

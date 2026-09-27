@@ -1,0 +1,17 @@
+# Runtime data — never commit your household's database
+data/
+backups/
+*.db
+*.db-wal
+*.db-shm
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Tooling
+node_modules/
+.DS_Store
+*.log
+coverage/

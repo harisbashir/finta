@@ -3,7 +3,8 @@ import { bad } from '../lib/http.js';
 import { validate, t } from '../lib/validate.js';
 import { crud, getOwned, insertRow } from '../lib/crud.js';
 import { nextTaskDate, addDays, monthRange } from '../lib/dates.js';
-import { materializeAutopay, monthSummary, upcomingBills } from '../lib/finance.js';
+import { materializeAutopay, monthSummary, upcomingBills, netWorth } from '../lib/finance.js';
+import { reviewCount } from './money.js';
 import { tx } from '../db.js';
 
 const REPEATS = ['none', 'daily', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly'];
@@ -172,6 +173,8 @@ export function homeRoutes(r) {
     return {
       today: d, month: { ...summary, schedule: undefined, start, end },
       bills, tasks, meals, lists, warranties, trials,
+      needsReview: reviewCount(ctx),
+      netWorth: netWorth(ctx.db, hid, 'household', ctx.user.id),
     };
   });
 }

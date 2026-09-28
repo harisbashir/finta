@@ -41,6 +41,8 @@ function render(v, t, reload) {
     <div class="large-title"><h1>${greeting()}, ${S.user.name}</h1><p>${fmtLong(t.today)}</p></div>
 
     ${monthCard(t.month)}
+    ${t.needsReview ? html`<a class="banner" href="#/money/review"><span class="tile" data-color="blue">${icon('tag')}</span>
+      <span class="body"><span class="title">${plural(t.needsReview, 'transaction')} to sort</span><span class="sub">From your last statement import. One tap each.</span></span>${icon('chevron-right', 'chev')}</a>` : ''}
 
     <div class="quick">
       <button class="btn prominent" data-q="expense">${icon('receipt')}Add Expense</button>

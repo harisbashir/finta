@@ -6,12 +6,15 @@ import { createSession, destroySession, audit, newTicket, getTicket, dropTicket 
 import { authenticationOptions, verifyAuthentication } from '../lib/webauthn.js';
 import { RateLimiter } from '../lib/security.js';
 import { tx } from '../db.js';
-import { seedHousehold } from '../seed.js';
+import { seedHousehold, seedSamples } from '../seed.js';
+import fs from 'node:fs';
+
+const VERSION = JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
 
 const LOCK_AFTER = 8;
 const LOCK_MINUTES = 15;
 
-export const publicUser = (u) => u && ({ id: u.id, name: u.name, email: u.email, role: u.role, color: u.color, totp: !!u.totp_secret });
+export const publicUser = (u) => u && ({ id: u.id, name: u.name, email: u.email, role: u.role, color: u.color, theme: u.theme || 'system', totp: !!u.totp_secret });
 export const publicHousehold = (h) => h && ({ id: h.id, name: h.name, currency: h.currency, locale: h.locale, timezone: h.timezone, week_starts: h.week_starts });
 
 const householdSchema = {
@@ -48,9 +51,10 @@ async function createHousehold(ctx, body, role = 'owner') {
     const hid = Number(h.lastInsertRowid);
     const u = ctx.db.prepare('INSERT INTO users (household_id, email, name, role, password_hash) VALUES (?, ?, ?, ?, ?)')
       .run(hid, person.email, person.name, role, hash);
-    seedHousehold(ctx.db, hid, { withSamples: !!body.withSamples, today: ctx.today(hh.timezone) });
+    seedHousehold(ctx.db, hid);
     return ctx.db.prepare('SELECT * FROM users WHERE id = ?').get(Number(u.lastInsertRowid));
   });
+  if (body.withSamples) seedSamples(ctx.db, user.household_id, user.id, ctx.today(hh.timezone));
   createSession(ctx, user.id);
   audit(ctx, 'household.created', hh.householdName, user);
   return user;
@@ -67,6 +71,8 @@ export function authRoutes(r, app) {
       allowSignup: ctx.cfg.allowSignup,
       user: publicUser(ctx.user),
       household: publicHousehold(ctx.household),
+      today: ctx.household ? ctx.today() : null,
+      version: VERSION,
     };
   });
 

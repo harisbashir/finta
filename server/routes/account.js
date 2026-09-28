@@ -28,7 +28,7 @@ function issueRecoveryCodes(db, userId) {
 export function accountRoutes(r, app) {
   reauthLimiter = new RateLimiter({ windowMs: 15 * 60000, max: Math.max(10, app.cfg.loginRateLimit / 2) });
   r.patch('/api/me', (ctx) => {
-    const v = validate(ctx.body, { name: t.str(60, { required: true }), color: t.oneOf(COLORS) }, { partial: true });
+    const v = validate(ctx.body, { name: t.str(60, { required: true }), color: t.oneOf(COLORS), theme: t.oneOf(['system', 'light', 'dark']) }, { partial: true });
     if (!Object.keys(v).length) return publicUser(ctx.user);
     const sets = Object.keys(v).map((k) => `${k} = ?`).join(', ');
     ctx.db.prepare(`UPDATE users SET ${sets} WHERE id = ?`).run(...Object.values(v), ctx.user.id);

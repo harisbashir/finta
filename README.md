@@ -5,9 +5,9 @@
 
 <p align="center">
   <img src="docs/screenshots/today-light.png" width="200" alt="Today screen in light mode">
-  <img src="docs/screenshots/today-dark.png" width="200" alt="Today screen in dark mode">
-  <img src="docs/screenshots/add-expense.png" width="200" alt="Add Expense sheet">
-  <img src="docs/screenshots/tasks.png" width="200" alt="Tasks screen">
+  <img src="docs/screenshots/accounts.png" width="200" alt="Accounts with credit card utilization">
+  <img src="docs/screenshots/import.png" width="200" alt="Statement import preview">
+  <img src="docs/screenshots/debts-dark.png" width="200" alt="Debts screen in dark mode">
 </p>
 <p align="center"><img src="docs/screenshots/money-desktop.png" width="820" alt="Money screen on a desktop browser"></p>
 
@@ -17,6 +17,9 @@ Finta runs in a single container on your own server. Everyone in the household s
 
 - **Money that answers one question:** *how much is left to spend this month?* Finta subtracts your bills, everyday spending and savings from your income, then tells you what that works out to per day.
 - **Set it once.** Paycheques, mortgage, utilities, insurance and subscriptions repeat on their own. Autopay items tick themselves off.
+- **Import your statements.** Drop in CSV files from your bank and credit cards. Finta sorts each line into a category and marks bills paid. It recognizes a card payment from chequing as a transfer, so nothing counts twice, and it learns from every correction.
+- **Debts with a plan.** Mortgage, cards, credit lines, car and student loans for each person, with a payoff planner that shows your debt-free date.
+- **Everyone manages their own money; the household sees the total.** Each member has their own accounts and debts (private if they like) and can switch between *Just Me* and the whole household.
 - **Everything else a home runs on.** Chores and maintenance that come back on schedule, shared shopping lists, a weekly meal plan that sends ingredients to the list, your appliances and warranties, and the plumber’s number.
 - **Built for the public internet.** Passkeys, two-factor codes, rate limiting, strict security headers, and invite-only accounts.
 - **Nothing to install but Docker.** There are zero npm dependencies. The server is plain Node.js with its built-in SQLite, and the web app needs no build step.
@@ -25,6 +28,7 @@ Finta runs in a single container on your own server. Everyone in the household s
 
 - [Quick start](#quick-start)
 - [How the money works](#how-the-money-works)
+- [Importing statements](#importing-statements)
 - [Features](#features)
 - [Security](#security)
 - [Running it](#running-it)
@@ -83,18 +87,51 @@ Left to spend  =  income expected this month
 
 Every schedule counts forward from its first due date, so it never drifts. A bill due on the 31st falls on the 30th in 30-day months and on the 28th or 29th in February. **Autopay** items record their own payment on the due date. Anything else gets a tick from you, with Undo if you tap the wrong one.
 
+## Importing statements
+
+1. **Money → Accounts → +** to add each chequing account, savings account, credit card and line of credit. For cards and credit lines, add the rate and minimum payment so the Debts planner can use them.
+2. On your bank’s website, download transactions as **CSV** for any date range.
+3. Open the account, tap **Import Statement**, choose the file, check the preview, and import.
+
+**Formats.** Finta reads what Canadian and US banks export:
+
+| Your file has… | Example | Finta handles it |
+| --- | --- | --- |
+| Separate Debit and Credit columns | `Date,Details,Debit,Credit` | Debit is money out, Credit is money in |
+| One signed Amount column | `Date,Description,Amount` | Negative is money out. For card files where purchases are positive, Finta flips the sign automatically, and you can change it |
+| No header row | `09/01/2026,TIM HORTONS,2.45,,1000.00` | Columns are recognized by their contents |
+| Any common date style | `2026-09-27`, `09/27/2026`, `27/09/2026`, `Sep 27, 2026` | Day/month order is worked out from the file |
+
+The mapping is remembered for each account. If a column is ever wrong, open **Columns look wrong?** in the preview.
+
+**What happens to each line**, in order:
+
+1. **Already imported?** It's skipped, so overlapping date ranges are safe.
+2. **Your rules.** Anything you've sorted before is sorted the same way.
+3. **Your bills.** A line that matches a bill by name, amount and due date marks that bill paid with the real amount.
+4. **Built-in knowledge.** Hundreds of merchants (Loblaws, Tim Hortons, Petro-Canada, Toronto Hydro, Netflix…) map to a category.
+5. **Otherwise** it goes to **Review**. Tap a category once and Finta applies it to every similar line, now and in future imports.
+
+**Card payments and transfers.** When money leaves one of your accounts and the same amount arrives in another within five days (a Visa payment from chequing, a move to savings), both sides are marked as a **transfer**. Transfers don't count as spending or income. Your card purchases are counted once, when you buy, not again when you pay the card.
+
+**Recurring costs you haven't set up.** After a few months of statements, **Bills & Income** shows a *Looks Recurring* section (for example, a gym membership at the same price every month). Tap **Track**, and from then on each statement line for it marks the bill paid.
+
+Try it with the files in [`docs/examples/`](docs/examples).
+
 ## Features
 
 | Area | What’s there |
 | --- | --- |
 | **Today** | Month at a glance, bills due this week, tasks due today and tomorrow, tonight’s dinner, shopping list count, warranty and free-trial reminders |
-| **Money** | Month view (bills, income, budgets, monthly commitments), Recurring (grouped by type, with totals per month and per year), Spending (search, grouped by day), Goals |
+| **Money** | Month overview with charts (In and Out for six months, Where It Went, Who Spent), cash and debt totals, bills, budgets. **Accounts** with balance charts and CSV import. **Review** for anything Finta couldn't sort. Bills & Income with *Looks Recurring* suggestions. Spending (search, filters). Goals |
+| **Debts** | Everything owed, per person: balance, rate, payment, progress paid off, interest per month, card utilization. A payoff planner (highest rate first or smallest first, plus extra each month) with a debt-free date, interest saved and a chart |
+| **Members** | Household → members. Accounts, bills, goals and debts belong to a person or are joint. Switch Money between the household and *Just Me*. Private accounts show others the balance but not the transactions |
 | **Tasks** | Quick add, sections (Overdue, Today, Tomorrow, Next 7 Days…), chores, maintenance, errands and admin, assignees, and repeating tasks that roll forward when you tick them |
 | **Lists** | Several shared shopping lists, add many items at once (“milk, eggs, bread”), no duplicates, clear what you’ve bought. Weekly meal plan with ingredients you can send to a list |
 | **Home** | Things you own (room, model, serial number, price, warranty) and household contacts with tap-to-call |
 | **Settings** | Profile, household (currency, time zone), members and roles, categories and budgets, passkeys, two-factor, password, devices, activity log, data export, account deletion |
 
-The interface follows Apple’s Human Interface Guidelines. It uses a tab bar on phones and a sidebar on wide screens, sheets for focused tasks, and grouped lists. It follows the system’s light or dark appearance and adapts to Increase Contrast, Reduce Motion and Reduce Transparency. Swipe actions and Undo work throughout. See [DESIGN.md](DESIGN.md).
+Appearance follows your device, or you can pick Light or Dark in **Settings → Appearance**. The interface follows Apple’s Human Interface Guidelines. It uses a tab bar on phones and a sidebar on wide screens, sheets for focused tasks, and grouped lists. It follows the system’s light or dark appearance and adapts to Increase Contrast, Reduce Motion and Reduce Transparency. Swipe actions and Undo work throughout. See [DESIGN.md](DESIGN.md).
 
 ## Security
 
@@ -108,7 +145,7 @@ Finta is designed to face the internet. The highlights are below; [SECURITY.md](
 - **Sessions:** server-side, with only a hash of the token stored. Cookies are `HttpOnly`, `Secure`, `SameSite` and `__Host-` prefixed. Changing your password signs out every other device, and you can revoke any device yourself.
 - **CSRF:** a custom request header, an Origin check, a Sec-Fetch-Site check and SameSite cookies.
 - **Headers:** a strict Content Security Policy (no inline scripts or styles), HSTS, `frame-ancestors 'none'` and `nosniff`.
-- **Isolation:** every query is scoped to your household, and references between rows are checked on write.
+- **Isolation:** every query is scoped to your household, and references between rows are checked on write. Within a household, a member’s private accounts are enforced on the server: other members get balances and totals, never the rows.
 - **Container:** runs as a non-root user on a read-only root filesystem with all Linux capabilities dropped and `no-new-privileges`.
 
 ## Running it
@@ -161,7 +198,7 @@ You need Node.js 22.13 or newer. There’s nothing to install.
 
 ```bash
 npm run dev    # http://localhost:3000, restarts on change; setup code is printed in the terminal
-npm test       # unit and API tests, including passkeys with a software authenticator
+npm test       # unit and API tests: import engine, transfers, privacy, debts, passkeys and more
 ```
 
 ## Project layout
@@ -172,14 +209,16 @@ server/
   app.js              request pipeline: headers → static → auth → CSRF → routes
   config.js           environment variables
   db.js, migrations/  SQLite (node:sqlite) and schema
-  lib/                crypto (scrypt, TOTP), webauthn, sessions, validation, dates, finance
-  routes/             auth, account, household, money, home
+  lib/                crypto (scrypt, TOTP), webauthn, sessions, validation, dates, finance,
+                      csv (statement parsing), merchant (names & categories), importer, debts (planner)
+  routes/             auth, account, household, money, accounts (import, review, rules), debts, home
   seed.js             default categories and optional example data
   cli.js              backup and account recovery
 public/
   index.html, css/app.css      design system (see DESIGN.md)
   js/app.js                    shell and router
-  js/views/*.js                Today, Money, Tasks, Lists, Home, Settings, sign-in
+  js/charts.js                 dependency-free SVG charts with tooltips and table views
+  js/views/*.js                Today, Money, Accounts, Debts, Tasks, Lists, Home, Settings, sign-in
 test/                          node:test suites
 ```
 

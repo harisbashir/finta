@@ -64,7 +64,7 @@ test('autopay records itself; loan payments reduce the balance and undo restores
   assert.equal(after1.loan_balance, 30000000 - (200000 - interest));
   const txId = after1.history[0].id;
   await c.del(`/api/transactions/${txId}`);
-  const bal = srv.db.prepare('SELECT loan_balance FROM recurring WHERE id = ?').get(loan.data.id).loan_balance;
+  const bal = srv.db.prepare('SELECT balance FROM debts WHERE recurring_id = ?').get(loan.data.id).balance;
   assert.equal(bal, 30000000);
 });
 

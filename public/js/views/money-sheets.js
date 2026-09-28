@@ -129,7 +129,7 @@ export async function recurringSheet({ item = null, kind = null, onSaved } = {})
         <p class="hint">Finta reminds you on Today two weeks before a trial ends.</p>` : ''}
       <div class="group">
         ${fSelect('category_id', 'Category', catOptions(cats, catKind), defaultCat ?? '', { data: 'data-int' })}
-        ${members.length > 1 ? fSelect('owner_id', 'Person', [['', 'Shared'], ...members.map((m) => [m.id, m.name])], item?.owner_id ?? '', { data: 'data-int' }) : ''}
+        ${members.length > 1 ? fSelect('owner_id', 'Whose', [...members.map((m) => [m.id, m.id === S.user.id ? `${m.name} (You)` : m.name]), ['', 'Joint — shared']], item ? item.owner_id ?? '' : S.user.id, { data: 'data-int' }) : ''}
         ${fDate('end_date', 'Ends', item?.end_date)}
       </div>
       <div class="group">
@@ -256,7 +256,9 @@ export function payVariableSheet(occ, { onSaved } = {}) {
 }
 
 // ─────────── Goals ───────────
-export function goalSheet({ goal = null, onSaved } = {}) {
+let membersForGoals = [];
+export async function goalSheet({ goal = null, onSaved } = {}) {
+  membersForGoals = await getMembers();
   const colors = ['teal', 'blue', 'indigo', 'purple', 'pink', 'orange', 'green', 'mint'];
   const s = sheet({
     title: goal ? 'Edit Goal' : 'New Goal', primary: goal ? 'Save' : 'Add',
@@ -267,6 +269,7 @@ export function goalSheet({ goal = null, onSaved } = {}) {
         ${fMoney('saved', 'Saved So Far', goal?.saved ?? 0, { placeholder: '0' })}
         ${fDate('target_date', 'Target Date', goal?.target_date)}
         ${fSelect('color', 'Color', colors.map((c) => [c, c[0].toUpperCase() + c.slice(1)]), goal?.color || 'teal')}
+        ${membersForGoals.length > 1 ? fSelect('owner_id', 'Whose', [['', 'Joint — shared'], [S.user.id, `${S.user.name} (You)`]], goal ? goal.owner_id ?? '' : '', { data: 'data-int' }) : ''}
       </div>
       <p class="hint">With a target date, Finta tells you how much to set aside each month.</p>
       ${goal ? html`<div class="group">${fToggle('archived', 'Completed', !!goal.archived, 'Hide it from your active goals.')}</div>

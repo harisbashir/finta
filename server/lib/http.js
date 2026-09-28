@@ -45,7 +45,7 @@ export class Router {
 
 const MAX_BODY = 256 * 1024;
 
-export function readJson(req) {
+export function readJson(req, max = MAX_BODY) {
   return new Promise((resolve, reject) => {
     if (req.method === 'GET' || req.method === 'HEAD') return resolve({});
     const type = (req.headers['content-type'] || '').split(';')[0].trim();
@@ -53,7 +53,7 @@ export function readJson(req) {
     const chunks = [];
     req.on('data', (c) => {
       size += c.length;
-      if (size > MAX_BODY) {
+      if (size > max) {
         reject(new HttpError(413, 'That request is too large.'));
         req.destroy();
         return;

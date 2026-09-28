@@ -38,6 +38,18 @@ Please **don’t open a public issue**. Use GitHub’s *Report a vulnerability* 
 - **Errors:** error responses never include stack traces or internal details.
 - **Timeouts:** the server enforces header and request timeouts.
 
+### Members and privacy
+
+- Each account, recurring item, goal and debt belongs to a member or is joint.
+- A member's **private account** (the default for personal accounts) is enforced on the server. Other members get its balance and its contribution to household totals, but never its individual rows, its day-by-day balance history, or its imports. Every route that returns or changes transactions checks this: account transactions, the transaction list, Review, categorize, edit and delete.
+- Only an account's owner (or anyone, for joint accounts) can import into it, edit it, undo its imports or delete it. Only a debt's owner can change a personal debt.
+
+### Statement import
+
+- CSV text is parsed on the server by a strict in-house parser. It is never evaluated, and formula-looking cells stay plain text.
+- Imports are capped at 8 MB and 5,000 rows. Only import routes accept bodies larger than 256 KB.
+- Imported descriptions are escaped on output like everything else.
+
 ### Data
 
 - **Export** never includes password hashes, two-factor secrets or passkeys.

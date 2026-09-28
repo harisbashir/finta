@@ -12,6 +12,8 @@ import { accountRoutes } from './routes/account.js';
 import { householdRoutes } from './routes/household.js';
 import { moneyRoutes } from './routes/money.js';
 import { homeRoutes } from './routes/home.js';
+import { bankAccountRoutes } from './routes/accounts.js';
+import { debtRoutes } from './routes/debts.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(here, '..', 'public');
@@ -37,6 +39,8 @@ export function createApp({ cfg, db, setupCode }) {
   householdRoutes(router);
   moneyRoutes(router);
   homeRoutes(router);
+  bankAccountRoutes(router);
+  debtRoutes(router);
 
   const apiLimiter = new RateLimiter({ windowMs: 60000, max: 600 });
   const headers = securityHeaders(cfg);
@@ -92,7 +96,8 @@ export function createApp({ cfg, db, setupCode }) {
       const isPublic = PUBLIC_API.some(([m, re]) => m === req.method && re.test(pathname));
       if (!isPublic && !ctx.user) throw new HttpError(401, 'Please sign in.');
 
-      ctx.body = await readJson(req);
+      // Statement imports carry the CSV text; everything else stays small.
+      ctx.body = await readJson(req, /\/import(\/preview)?$/.test(pathname) ? 8 * 1024 * 1024 : undefined);
       let result;
       for (const h of match.handlers) result = await h(ctx);
       if (result && result.$raw !== undefined) send(res, 200, result.$raw, result.headers);

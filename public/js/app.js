@@ -1,6 +1,6 @@
 // App shell: bootstrap, hash routing, sidebar (regular width) / tab bar (compact width).
 import { api, setUnauthorizedHandler } from './api.js';
-import { html, icon, $, S, initials, toast } from './ui.js';
+import { html, icon, $, S, initials, toast, applyTheme } from './ui.js';
 import { renderAuth } from './views/auth.js';
 
 const SECTIONS = [
@@ -26,6 +26,9 @@ async function boot() {
   try { info = await api.get('/api/bootstrap'); }
   catch (e) { root.innerHTML = String(html`<div class="auth"><div class="auth-card empty">${icon('circle-alert')}<h3>Can’t reach Finta</h3><p>${e.message}</p><button class="btn prominent" id="reload">Try Again</button></div></div>`); $('#reload').onclick = () => location.reload(); return; }
   S.user = info.user; S.household = info.household;
+  S.today = info.today || new Date().toLocaleDateString('en-CA');
+  S.version = info.version;
+  if (info.user) applyTheme(info.user.theme);
   const { section, rest } = parseHash();
   if (!info.user) {
     shellReady = false;
@@ -73,6 +76,8 @@ async function navigate() {
   const def = [...SECTIONS, SETTINGS].find((s) => s.id === section) || SECTIONS[0];
   document.querySelectorAll('[data-nav]').forEach((a) => { if (a.dataset.nav === def.id) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
 
+  // A sheet belongs to the screen that opened it.
+  document.querySelectorAll('dialog[open]').forEach((d) => { d.close(); d.remove(); });
   const token = ++navToken;
   const old = $('#page');
   const page = document.createElement('div');

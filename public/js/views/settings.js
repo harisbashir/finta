@@ -1,6 +1,6 @@
 // Settings: profile, household & members, categories, sign-in & security, data.
 import { api, passkeysSupported, createPasskey } from '../api.js';
-import { html, raw, icon, $, $$, S, sheet, toast, confirmDialog, fText, fSelect, fToggle, fMoney, initials, emptyState, fmtDate, plural } from '../ui.js';
+import { html, raw, icon, $, $$, S, sheet, toast, confirmDialog, fText, fSelect, fToggle, fMoney, initials, emptyState, fmtDate, plural, applyTheme } from '../ui.js';
 import { getCategories, getMembers, invalidate } from '../store.js';
 import { COLORS_UI } from './palette.js';
 
@@ -13,6 +13,7 @@ export async function mount(v) {
   if (sub === 'security') return security(v);
   if (sub === 'categories') return categories(v);
   if (sub === 'activity') return activity(v);
+  if (sub === 'rules') return rules(v);
   return main(v);
 }
 
@@ -28,10 +29,19 @@ async function main(v) {
     </div></section>
 
     <section class="section">
+      <div class="section-head"><span class="caps">Appearance</span></div>
+      <div class="segmented appearance" role="radiogroup" aria-label="Appearance">
+        ${[['system', 'Automatic'], ['light', 'Light'], ['dark', 'Dark']].map(([k, l]) => html`<button role="radio" data-theme-choice="${k}" aria-checked="${String((S.user.theme || 'system') === k)}" aria-selected="${String((S.user.theme || 'system') === k)}">${l}</button>`)}
+      </div>
+      <p class="section-foot">Automatic follows your device’s light or dark setting.</p>
+    </section>
+
+    <section class="section">
       <div class="section-head"><span class="caps">Household</span></div>
       <div class="group has-icons">
         <button class="row" data-household ${owner ? '' : raw('disabled')}><span class="tile" data-color="blue">${icon('house')}</span><span class="body"><span class="title">${h.name}</span><span class="sub">${h.currency} · ${h.timezone.replace(/_/g, ' ')}</span></span>${owner ? icon('chevron-right', 'chev') : ''}</button>
         <a class="row" href="#/settings/categories"><span class="tile" data-color="orange">${icon('tag')}</span><span class="body"><span class="title">Categories</span></span>${icon('chevron-right', 'chev')}</a>
+        <a class="row" href="#/settings/rules"><span class="tile" data-color="purple">${icon('sparkles')}</span><span class="body"><span class="title">Import Rules</span><span class="sub">What Finta has learned about your merchants</span></span>${icon('chevron-right', 'chev')}</a>
       </div>
     </section>
 
@@ -62,9 +72,16 @@ async function main(v) {
     <section class="section"><div class="group">
       <button class="row destructive" data-delete-account>Delete Account…</button>
     </div>
-    <p class="section-foot">Finta · self-hosted · your data never leaves your server.</p></section>`);
+    <p class="section-foot">Finta ${S.version || ''} · self-hosted · your data never leaves your server.</p></section>`);
 
   const el = v.el;
+  $$('[data-theme-choice]', el).forEach((b) => b.addEventListener('click', async () => {
+    const theme = b.dataset.themeChoice;
+    applyTheme(theme);
+    S.user.theme = theme;
+    $$('[data-theme-choice]', el).forEach((x) => { const on = String(x === b); x.setAttribute('aria-checked', on); x.setAttribute('aria-selected', on); });
+    try { await api.patch('/api/me', { theme }); } catch (err) { toast(err.message, { error: true }); }
+  }));
   $('[data-profile]', el).onclick = () => profileSheet(() => location.reload());
   $('[data-household]', el).onclick = () => householdSheet(() => location.reload());
   $('[data-invite]', el)?.addEventListener('click', inviteSheet);
@@ -360,4 +377,36 @@ async function activity(v) {
     ${rows.length ? html`<div class="group">${rows.map((r) => html`<div class="row"><span class="body"><span class="title ${r.event === 'login.failed' ? 'text-neg' : ''}">${r.user_name || 'Someone'} · ${LABEL[r.event] || r.event}${r.detail && r.event !== 'login.failed' ? ` (${r.detail})` : ''}</span>
       <span class="sub">${new Date(r.created_at.replace(' ', 'T') + 'Z').toLocaleString(S.household.locale, { dateStyle: 'medium', timeStyle: 'short' })}${r.ip ? ` · ${r.ip}` : ''}</span></span></div>`)}</div>`
       : html`<div class="group">${emptyState('activity', 'No activity yet', '')}</div>`}`);
+}
+
+// ─────────── Import rules ───────────
+async function rules(v) {
+  v.setTitle('Import Rules');
+  const load = async () => {
+    const [list, cats] = await Promise.all([api.get('/api/rules'), getCategories()]);
+    if (!v.alive()) return;
+    const shown = list.filter((r) => r.kind !== 'ignore_recurring');
+    const ignored = list.filter((r) => r.kind === 'ignore_recurring');
+    v.el.innerHTML = String(html`<div class="large-title"><h1>Import Rules</h1><p>When a statement line contains this text, Finta files it this way. Rules are created as you sort transactions.</p></div>
+      ${shown.length ? html`<div class="group has-icons">${shown.map((r) => html`<div class="row">
+        <span class="tile" data-color="${r.kind === 'transfer' ? 'gray' : r.category_color || 'gray'}">${icon(r.kind === 'transfer' ? 'refresh-cw' : r.category_icon || 'tag')}</span>
+        <span class="body"><span class="title">${r.pattern}</span><span class="sub">${r.kind === 'transfer' ? 'Transfer' : r.category_name || 'No category'}${r.recurring_name ? ` · pays ${r.recurring_name}` : ''}${r.rename_to ? ` · shown as “${r.rename_to}”` : ''}${r.hits ? ` · used ${plural(r.hits, 'time')}` : ''}</span></span>
+        <button class="btn small destructive plain" data-del="${r.id}" aria-label="Delete rule ${r.pattern}">Delete</button></div>`)}</div>`
+        : html`<div class="group">${emptyState('sparkles', 'No rules yet', 'Sort a transaction in Review and Finta creates a rule for it.')}</div>`}
+      <div class="section"></div>
+      <div class="btn-row"><button class="btn" data-add>${icon('plus')} Add Rule</button><button class="btn" data-rerun>${icon('refresh-cw')} Re-sort Everything</button></div>
+      ${ignored.length ? html`<p class="section-foot">Not suggested as bills: ${ignored.map((r) => r.pattern).join(', ')}.</p>` : ''}`);
+    $$('[data-del]', v.el).forEach((b) => b.addEventListener('click', async () => { await api.del(`/api/rules/${b.dataset.del}`); load(); }));
+    $('[data-rerun]', v.el).onclick = async () => { const r = await api.post('/api/money/recategorize'); toast(`Re-sorted · ${plural(r.changed, 'row')} updated`); };
+    $('[data-add]', v.el).onclick = () => sheet({
+      title: 'New Rule', primary: 'Add',
+      render: () => html`<form class="form" novalidate>
+        <div class="group">${fText('pattern', 'When Text Has', '', { placeholder: 'COSTCO', required: true, maxlength: 60, autofocus: true })}
+          ${fSelect('category_id', 'File Under', cats.filter((c) => !c.archived).map((c) => [c.id, c.name]), '', { data: 'data-int' })}
+          ${fText('rename_to', 'Show As', '', { placeholder: 'Optional', maxlength: 80 })}</div>
+        <p class="hint">Matching is on the cleaned-up merchant name, so leave out store numbers and cities.</p></form>`,
+      onSubmit: async (vals) => { const r = await api.post('/api/rules', vals); toast(r.applied ? `Rule added · ${plural(r.applied, 'row')} updated` : 'Rule added'); load(); },
+    });
+  };
+  await load();
 }

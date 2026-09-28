@@ -1,8 +1,11 @@
 // Money: categories, recurring items (income, bills, subscriptions, loans), transactions, goals.
-import { bad, notFound } from '../lib/http.js';
+import { bad, notFound, forbidden } from '../lib/http.js';
 import { validate, t, isDate } from '../lib/validate.js';
 import { crud, getOwned, insertRow, updateRow } from '../lib/crud.js';
-import { monthSummary, upcomingBills, materializeAutopay, monthlyEquivalent, loanProjection, settleOccurrence } from '../lib/finance.js';
+import { monthSummary, upcomingBills, materializeAutopay, monthlyEquivalent, loanProjection, settleOccurrence, debtForRecurring,
+  monthlyTrend, categoryBreakdown, memberBreakdown, netWorth, TX_JOINS, TX_VISIBLE, TX_OWNER, scopeFilter } from '../lib/finance.js';
+import { restorePrincipal, unpairTransfer } from '../lib/importer.js';
+import { canSeeAccount } from './accounts.js';
 import { nextDue, occurrences, addDays } from '../lib/dates.js';
 import { tx } from '../db.js';
 
@@ -34,6 +37,7 @@ const txSchema = {
   category_id: t.ref('categories', { label: 'category' }),
   note: t.str(200),
   paid_by: t.ref('users', { label: 'person' }),
+  account_id: t.ref('accounts', { label: 'account' }),
 };
 
 function decorate(item, todayStr, db) {
@@ -45,8 +49,12 @@ function decorate(item, todayStr, db) {
   const created = item.created_at.slice(0, 7) + '-01';
   const next = recent.find((d) => !paid.has(d) && (d >= todayStr || d >= created)) || nextDue(sched, todayStr);
   const out = { ...item, monthly: monthlyEquivalent(item), next_due: next, overdue: !!next && next < todayStr };
-  if (item.kind === 'loan' && item.loan_balance) {
-    const p = loanProjection(item, next || todayStr);
+  const debt = item.kind === 'loan' ? debtForRecurring(db, item.id) : null;
+  out.loan_balance = debt ? debt.balance : null;
+  out.loan_rate = debt ? debt.rate : null;
+  out.debt_id = debt?.id ?? null;
+  if (debt && debt.balance) {
+    const p = loanProjection({ ...item, loan_balance: debt.balance, loan_rate: debt.rate }, next || todayStr);
     out.payoff_date = p.payoffDate;
     out.total_interest = p.totalInterest;
     out.never_pays_off = !!p.neverPaysOff;
@@ -83,7 +91,7 @@ export function moneyRoutes(r) {
     const item = getOwned(ctx.db, 'recurring', ctx.params.id, ctx.household.id);
     const history = ctx.db.prepare(`SELECT id, date, due_date, amount, principal FROM transactions WHERE recurring_id = ? ORDER BY due_date DESC LIMIT 24`).all(item.id);
     const out = decorate(item, today(ctx), ctx.db);
-    if (item.kind === 'loan') out.projection = loanProjection(item, out.next_due || today(ctx));
+    if (item.kind === 'loan' && out.loan_balance) out.projection = loanProjection({ ...item, loan_balance: out.loan_balance, loan_rate: out.loan_rate }, out.next_due || today(ctx));
     return { ...out, history };
   });
 
@@ -98,7 +106,13 @@ export function moneyRoutes(r) {
   r.post('/api/recurring', (ctx) => {
     const v = validate(ctx.body, recurringSchema, { db: ctx.db, householdId: ctx.household.id });
     recurringCheck(v, ctx, null);
-    const row = insertRow(ctx.db, 'recurring', ctx.household.id, v);
+    const loan = takeLoanFields(v);
+    if (!('owner_id' in ctx.body)) v.owner_id = ctx.user.id;
+    const row = tx(ctx.db, () => {
+      const item = insertRow(ctx.db, 'recurring', ctx.household.id, v);
+      syncLoanDebt(ctx, item, loan);
+      return item;
+    });
     return decorate(row, today(ctx), ctx.db);
   });
 
@@ -107,7 +121,13 @@ export function moneyRoutes(r) {
     const v = validate(ctx.body, recurringSchema, { db: ctx.db, householdId: ctx.household.id, partial: true });
     for (const k of ['name', 'amount', 'start_date']) if (k in v && v[k] == null) throw bad(`Add a ${recurringSchema[k].label || k}.`, { field: k });
     recurringCheck(v, ctx, existing);
-    return decorate(updateRow(ctx.db, 'recurring', existing.id, ctx.household.id, v), today(ctx), ctx.db);
+    const loan = takeLoanFields(v);
+    const row = tx(ctx.db, () => {
+      const item = updateRow(ctx.db, 'recurring', existing.id, ctx.household.id, v);
+      syncLoanDebt(ctx, item, loan);
+      return item;
+    });
+    return decorate(row, today(ctx), ctx.db);
   });
 
   r.delete('/api/recurring/:id', (ctx) => {
@@ -140,31 +160,37 @@ export function moneyRoutes(r) {
   // ── Transactions ──
   r.get('/api/transactions', (ctx) => {
     const q = ctx.query;
-    const where = ['t.household_id = ?'];
-    const args = [ctx.household.id];
+    const sc = scopeFilter(q.scope === 'me' ? 'me' : 'household', ctx.user.id);
+    const where = ['t.household_id = ?', TX_VISIBLE, '1=1' + sc.sql];
+    const args = [ctx.household.id, ctx.user.id, ...sc.args];
+    if (q.transfers !== '1') where.push('t.is_transfer = 0');
     if (q.month && /^\d{4}-\d{2}$/.test(q.month)) { where.push("substr(t.date, 1, 7) = ?"); args.push(q.month); }
     if (q.category) { where.push('t.category_id = ?'); args.push(Number(q.category)); }
     if (q.kind === 'spending') where.push('t.recurring_id IS NULL AND t.goal_id IS NULL AND t.direction = \'out\'');
-    if (q.q) { where.push('t.note LIKE ?'); args.push(`%${String(q.q).slice(0, 60).replace(/[%_]/g, '')}%`); }
-    return ctx.db.prepare(`SELECT t.*, c.name AS category_name, c.color AS category_color, c.icon AS category_icon,
-        u.name AS paid_by_name, r.kind AS recurring_kind, g.name AS goal_name
-      FROM transactions t LEFT JOIN categories c ON c.id = t.category_id LEFT JOIN users u ON u.id = t.paid_by
-      LEFT JOIN recurring r ON r.id = t.recurring_id LEFT JOIN goals g ON g.id = t.goal_id
-      WHERE ${where.join(' AND ')} ORDER BY t.date DESC, t.id DESC LIMIT 500`).all(...args);
+    if (q.q) { where.push('(t.note LIKE ? OR t.description LIKE ?)'); const like = `%${String(q.q).slice(0, 60).replace(/[%_]/g, '')}%`; args.push(like, like); }
+    return ctx.db.prepare(`SELECT t.*, c.name AS category_name, c.color AS category_color, c.icon AS category_icon, c.kind AS category_kind,
+        u.name AS paid_by_name, r.kind AS recurring_kind, g.name AS goal_name, a.name AS account_name, a.type AS account_type, ${TX_OWNER} AS owner_id
+      ${TX_JOINS} LEFT JOIN users u ON u.id = t.paid_by LEFT JOIN goals g ON g.id = t.goal_id
+      WHERE ${where.join(' AND ')} ORDER BY t.date DESC, t.id DESC LIMIT 800`).all(...args);
   });
 
   r.post('/api/transactions', (ctx) => {
     const v = validate(ctx.body, txSchema, { db: ctx.db, householdId: ctx.household.id });
     checkTxRefs(v);
     if (!('paid_by' in ctx.body)) v.paid_by = ctx.user.id;
+    if (v.account_id) checkAccountAccess(ctx, v.account_id);
+    v.cat_source = 'manual';
     return insertRow(ctx.db, 'transactions', ctx.household.id, v);
   });
 
   r.patch('/api/transactions/:id', (ctx) => {
     const existing = getOwned(ctx.db, 'transactions', ctx.params.id, ctx.household.id);
+    if (existing.account_id) checkAccountAccess(ctx, existing.account_id);
     const v = validate(ctx.body, txSchema, { db: ctx.db, householdId: ctx.household.id, partial: true });
     for (const k of ['date', 'amount']) if (k in v && v[k] == null) throw bad(`Add a ${k}.`, { field: k });
     checkTxRefs(v);
+    if (v.account_id) checkAccountAccess(ctx, v.account_id);
+    if ('category_id' in v) v.cat_source = 'manual';
     if (existing.goal_id && 'amount' in v) {
       ctx.db.prepare('UPDATE goals SET saved = MAX(0, saved + ?) WHERE id = ?').run(v.amount - existing.amount, existing.goal_id);
     }
@@ -173,6 +199,7 @@ export function moneyRoutes(r) {
 
   r.delete('/api/transactions/:id', (ctx) => {
     const row = getOwned(ctx.db, 'transactions', ctx.params.id, ctx.household.id);
+    if (row.account_id) checkAccountAccess(ctx, row.account_id);
     removeTransaction(ctx, row);
     return { ok: true, deleted: row };
   });
@@ -183,7 +210,7 @@ export function moneyRoutes(r) {
     schema: {
       name: t.str(60, { required: true }), target: t.money({ required: true, label: 'target amount' }),
       saved: t.money({ default: 0 }), target_date: t.date({ label: 'target date' }), color: t.color({ default: 'teal' }),
-      notes: t.text(1000), archived: t.bool(),
+      notes: t.text(1000), archived: t.bool(), owner_id: t.ref('users', { label: 'person' }),
     },
   });
 
@@ -203,22 +230,67 @@ export function moneyRoutes(r) {
   r.get('/api/money/summary', (ctx) => {
     const ym = /^\d{4}-\d{2}$/.test(ctx.query.month || '') ? ctx.query.month : today(ctx).slice(0, 7);
     materializeAutopay(ctx.db, ctx.household.id, today(ctx));
-    return monthSummary(ctx.db, ctx.household.id, ym, today(ctx));
+    const scope = ctx.query.scope === 'me' ? 'me' : 'household';
+    const summary = monthSummary(ctx.db, ctx.household.id, ym, today(ctx), { scope, userId: ctx.user.id });
+    summary.needsReview = reviewCount(ctx);
+    return summary;
+  });
+
+  // Charts: trend, where the money went, who spent it, net worth.
+  r.get('/api/money/insights', (ctx) => {
+    const ym = /^\d{4}-\d{2}$/.test(ctx.query.month || '') ? ctx.query.month : today(ctx).slice(0, 7);
+    const scope = ctx.query.scope === 'me' ? 'me' : 'household';
+    const opts = { scope, userId: ctx.user.id };
+    return {
+      month: ym, scope,
+      trend: monthlyTrend(ctx.db, ctx.household.id, today(ctx), { ...opts, months: 6 }),
+      categories: categoryBreakdown(ctx.db, ctx.household.id, ym, opts),
+      members: scope === 'household' ? memberBreakdown(ctx.db, ctx.household.id, ym) : null,
+      netWorth: netWorth(ctx.db, ctx.household.id, scope, ctx.user.id),
+    };
   });
 
   r.get('/api/money/upcoming', (ctx) => {
     materializeAutopay(ctx.db, ctx.household.id, today(ctx));
     const days = Math.min(90, Math.max(1, Number(ctx.query.days) || 30));
-    return upcomingBills(ctx.db, ctx.household.id, today(ctx), days);
+    return upcomingBills(ctx.db, ctx.household.id, today(ctx), days, { scope: ctx.query.scope === 'me' ? 'me' : 'household', userId: ctx.user.id });
   });
+}
+
+export function reviewCount(ctx) {
+  return ctx.db.prepare(`SELECT COUNT(*) AS n ${TX_JOINS} WHERE t.household_id = ? AND ${TX_VISIBLE} AND t.account_id IS NOT NULL
+    AND t.category_id IS NULL AND t.is_transfer = 0 AND t.recurring_id IS NULL AND t.goal_id IS NULL`).get(ctx.household.id, ctx.user.id).n;
+}
+
+function checkAccountAccess(ctx, accountId) {
+  const a = ctx.db.prepare('SELECT * FROM accounts WHERE id = ? AND household_id = ?').get(accountId, ctx.household.id);
+  if (!a || !canSeeAccount(a, ctx.user)) throw forbidden('This account is private to its owner.');
+}
+
+/** Loans keep their balance and rate on a linked debt. */
+function takeLoanFields(v) {
+  const loan = {};
+  for (const k of ['loan_balance', 'loan_rate']) if (k in v) { loan[k] = v[k]; delete v[k]; }
+  return loan;
+}
+function syncLoanDebt(ctx, item, loan) {
+  if (item.kind !== 'loan' || !Object.keys(loan).length) return;
+  const debt = debtForRecurring(ctx.db, item.id);
+  if (debt) {
+    if ('loan_balance' in loan && loan.loan_balance != null) ctx.db.prepare('UPDATE debts SET balance = ? WHERE id = ?').run(loan.loan_balance, debt.id);
+    if ('loan_rate' in loan) ctx.db.prepare('UPDATE debts SET rate = ? WHERE id = ?').run(loan.loan_rate, debt.id);
+  } else if (loan.loan_balance) {
+    const type = /mortgage/i.test(item.name) ? 'mortgage' : /car|auto/i.test(item.name) ? 'car' : /student|osap/i.test(item.name) ? 'student' : 'personal';
+    ctx.db.prepare(`INSERT INTO debts (household_id, owner_id, name, type, lender, balance, original_amount, rate, min_payment, recurring_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(ctx.household.id, item.owner_id, item.name, type, item.payee, loan.loan_balance, loan.loan_balance,
+      loan.loan_rate ?? null, monthlyEquivalent(item), item.id);
+  }
 }
 
 function removeTransaction(ctx, row) {
   tx(ctx.db, () => {
-    if (row.principal && row.recurring_id) {
-      ctx.db.prepare('UPDATE recurring SET loan_balance = loan_balance + ? WHERE id = ? AND household_id = ?')
-        .run(row.principal, row.recurring_id, ctx.household.id);
-    }
+    restorePrincipal(ctx.db, row);
+    if (row.is_transfer) unpairTransfer(ctx.db, row);
     if (row.goal_id) ctx.db.prepare('UPDATE goals SET saved = MAX(0, saved - ?) WHERE id = ?').run(row.amount, row.goal_id);
     ctx.db.prepare('DELETE FROM transactions WHERE id = ?').run(row.id);
   });

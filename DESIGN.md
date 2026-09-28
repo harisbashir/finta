@@ -26,7 +26,7 @@ Everything else is a deliberately quiet utility. It uses system type, system col
 
 ### Color
 
-Colors use Apple’s semantic system colors, defined as CSS custom properties with light, dark and **Increase Contrast** variants (`color.md` › Best practices). There is no in-app appearance switch; Finta follows the system setting (`dark-mode.md`: “Avoid offering an app-specific appearance setting.”).
+Colors use Apple’s semantic system colors, defined as CSS custom properties with light, dark and **Increase Contrast** variants (`color.md` › Best practices). Appearance defaults to **Automatic**, which follows the system. Since v1.1, **Settings → Appearance** also offers Light and Dark; this was a product requirement and is listed under departures below. The choice is saved to the account and applied by a tiny head script before first paint, so the page never flashes the wrong appearance.
 
 Apple’s `secondaryLabel` (60 % opacity) measures 3.4:1 on white, below the 4.5:1 that `accessibility.md` asks of text up to 17 pt. Finta darkens it to 78 %. Semantic text colors use Apple’s accessible variants in light mode.
 
@@ -40,6 +40,33 @@ Apple’s `secondaryLabel` (60 % opacity) measures 3.4:1 on white, below the 4.5
 | White on prominent button | #0064d2 | 5.6 | #0a84ff | 3.6 (semibold label; ≥ 3:1 for bold) |
 
 **One color means one thing.** Blue means interactive. Green means money in, what’s left, or paid. Red means overdue, over budget or destructive. Orange means soon. Category colors use the system palette and always come with a name, so no information depends on color alone. The month strip carries an `aria-label` that states every amount.
+
+### Charts
+
+Charts follow the dataviz method: pick the form first, then colour by job, validate, apply the mark specs, add hover and focus, and check accessibility.
+
+| Chart | Form | Why |
+| --- | --- | --- |
+| In and Out, six months | Grouped columns, 2 series | Compare two magnitudes per month on one axis |
+| Where It Went | Horizontal bars, one hue | Nominal categories ranked by size. The category's own glyph tile identifies it, so bars aren't coloured by rank |
+| Who Spent / What It's Made Of | One stacked bar + legend with values and % | Part-to-whole, at most 4 parts; the rest fold into grey |
+| Account balance, debt payoff | Line (area for a single series) with crosshair | Change over time |
+| Cash & Savings, Total Debt | Stat tiles | One number each; a chart would add nothing |
+
+**Palette.** Four chart slots in a fixed order, run through `validate_palette.js`. Every check passes in both modes: lightness band, chroma floor, colour-blind separation (worst adjacent ΔE 16.5 light / 16.0 dark) and normal-vision separation.
+
+| Slot | Light | Dark | Used for |
+| --- | --- | --- | --- |
+| 1 | #5856d6 | #6664e8 | Bills / Out / first person |
+| 2 | #d97706 | #cc7a08 | Spent |
+| 3 | #0a8db0 | #1f9bb5 | Saved |
+| 4 | #2e9e46 | #27a844 | Left / In / with-plan |
+
+Green against orange failed the colour-blind check (ΔE 4.9), so two-series charts pair **green with indigo** instead. The month strip uses the same tokens.
+
+**Marks.** Bars are at most 24 px wide, with 4 px rounded data-ends that are square at the baseline. There's a 2 px surface gap between stacked segments, lines are 2 px, gridlines are solid hairlines, and there is only ever one y-axis. Text never takes a series colour.
+
+**Interaction.** Columns have a per-band hover and focus tooltip. Lines have a crosshair that snaps to the nearest day and can be moved with the arrow keys. Every chart has a **Show as table** view, so no value is only available on hover. Tooltip text is inserted with `textContent`.
 
 ### Type
 
@@ -81,6 +108,7 @@ Touch controls are 44 × 44 px, and check circles have a 44 px hit area around a
 | “Delay sign-in for as long as possible” (`managing-accounts.md`) | Sign-in comes first | Every screen shows private household data on a server that anyone on the internet can reach. The sign-in screen explains the benefit instead |
 | SF Symbols | Lucide icons | SF Symbols may only be used on Apple platforms. Lucide has one consistent stroke weight that sits well next to system type |
 | Menu bar for every command (macOS) | Not applicable | Finta is a web app, so commands live in toolbars and sheets |
+| “Avoid offering an app-specific appearance setting” (`dark-mode.md`) | Automatic / Light / Dark in Settings | Requested for v1.1. Automatic is the default, so the HIG behaviour is kept unless someone opts out |
 
 ## Self-review (apple-design lenses)
 

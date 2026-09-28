@@ -96,6 +96,16 @@ export const REPEAT_LABEL = { none: 'Never', daily: 'Every day', weekly: 'Every 
 export const initials = (name = '') => name.trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase() || '').join('') || '?';
 export const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
 
+// ─────────── Appearance ───────────
+/** 'system' follows the device; 'light' / 'dark' override it. Remembered on this device and on the account. */
+export function applyTheme(theme) {
+  const root = document.documentElement;
+  if (theme === 'light' || theme === 'dark') root.setAttribute('data-theme', theme); else root.removeAttribute('data-theme');
+  try { if (theme === 'light' || theme === 'dark') localStorage.setItem('finta-theme', theme); else localStorage.removeItem('finta-theme'); } catch { /* ignore */ }
+  const dark = theme === 'dark' || (theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => { m.content = dark ? '#000000' : '#f2f2f7'; });
+}
+
 // ─────────── Toasts ───────────
 let toastTimer;
 export function toast(message, { undo, error = false, duration = 5000 } = {}) {

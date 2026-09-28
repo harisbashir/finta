@@ -66,7 +66,7 @@ Please **don’t open a public issue**. Use GitHub’s *Report a vulnerability* 
 ## Your part as the host
 
 1. **Use HTTPS.** `compose.yaml` sets up Caddy, which handles certificates automatically. Keep `APP_URL` exactly equal to the address people use.
-2. **Keep things updated.** Run `git pull && docker compose up -d --build` regularly. Dependabot opens pull requests for base-image updates.
+2. **Keep things updated.** Run `bash scripts/update.sh` regularly (it backs up first). Dependabot opens pull requests for base-image updates.
 3. **Back up** the `finta-data` volume (`node server/cli.js backup`) and store copies somewhere else. Backups contain your financial data, so protect them.
 4. **Encourage passkeys or two-factor** for everyone in the household. Owners can see who has them turned on under **Settings → People**.
 5. **Leave `TRUST_PROXY` off** unless Finta sits behind a proxy you control. Otherwise clients could spoof their IP address to get around rate limits.

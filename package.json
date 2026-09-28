@@ -1,6 +1,6 @@
 {
   "name": "finta",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "A calm, self-hosted home for your household's money, chores, lists and meals.",
   "private": true,
   "type": "module",

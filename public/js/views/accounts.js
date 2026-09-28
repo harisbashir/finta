@@ -183,9 +183,10 @@ export async function accountSheet({ account = null, type = null, onSaved, onDel
       if (v.owner_id === null && members.length < 2) v.owner_id = S.user.id;
       if (v.current_balance == null) delete v.current_balance;
       if (account) { if (v.current_balance === (ACCOUNT_TYPES[k].owes ? Math.abs(account.balance) : account.balance)) delete v.current_balance; await api.patch(`/api/accounts/${account.id}`, v); }
-      else await api.post('/api/accounts', v);
+      let created = null;
+      if (!account) created = await api.post('/api/accounts', v);
       toast(account ? 'Saved' : `Added ${v.name}`);
-      onSaved?.();
+      onSaved?.(created);
     },
   });
 }
@@ -203,8 +204,8 @@ export function importSheet({ account = null, accounts = [], onDone } = {}) {
     render: () => {
       if (step === 'file') return html`<div class="form">
         ${!account ? html`<div class="group-label">Account</div>
-          ${editable.length ? html`<div class="group">${fSelect('acc', 'Import Into', [['', 'Choose…'], ...editable.map((x) => [x.id, x.name])], acc?.id ?? '', { data: 'data-int' })}</div>`
-            : html`<div class="form-error">${icon('circle-alert')}<span>Add an account first — Accounts → +.</span></div>`}` : ''}
+          ${editable.length ? html`<div class="group">${fSelect('acc', 'Import Into', [['', 'Choose…'], ...editable.map((x) => [x.id, x.name]), ['new', 'New Account…']], acc?.id ?? '')}</div>`
+            : html`<div class="group"><button type="button" class="row" data-new-acc><span class="tile" data-color="blue">${icon('plus')}</span><span class="body"><span class="title">Add the Account First</span><span class="sub">Chequing, savings, credit card or line of credit — then choose its CSV.</span></span>${icon('chevron-right', 'chev')}</button></div>`}` : ''}
         <label class="drop" data-drop tabindex="0">${icon('download')}<strong>Choose a CSV file</strong><span>or drop it here</span>
           <input type="file" accept=".csv,text/csv,.txt" data-file aria-label="Choose a CSV file"></label>
         ${error ? html`<div class="form-error">${icon('circle-alert')}<span>${error}</span></div>` : ''}
@@ -268,7 +269,15 @@ export function importSheet({ account = null, accounts = [], onDone } = {}) {
         filename = file.name; csv = await file.text();
         await doPreview(api2);
       };
-      $('[name=acc]', d)?.addEventListener('change', (e) => { acc = editable.find((x) => x.id === Number(e.target.value)) || null; error = ''; });
+      const newAccount = () => {
+        s.close();
+        accountSheet({ onSaved: (created) => { onDone?.(); if (created) setTimeout(() => importSheet({ account: created, onDone }), 350); } });
+      };
+      $('[name=acc]', d)?.addEventListener('change', (e) => {
+        if (e.target.value === 'new') { newAccount(); return; }
+        acc = editable.find((x) => x.id === Number(e.target.value)) || null; error = '';
+      });
+      $('[data-new-acc]', d)?.addEventListener('click', newAccount);
       $('[data-file]', d)?.addEventListener('change', (e) => read(e.target.files[0]));
       const drop = $('[data-drop]', d);
       if (drop) {

@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.1.1 — 2026-09-28
+
+### Fixed
+- **The Household / Just Me switch now shows which one is selected.** The figures always changed, but the highlighted button stayed on the household (Money, Spending and Debts).
+- **Dark mode text in more browsers.** Buttons, list rows, menus, dropdown options, disabled fields and autofilled fields now always use the app's own text colours, so browsers that paint form controls with their system colours no longer show dark text on dark rows.
+- Initials on grey, yellow, mint and cyan avatars (for example the debt payoff order) now meet contrast in both modes.
+
+### Easier statement import
+- **Import** button on the Money screen, next to +.
+- An **Import Your Bank Statements** prompt on Money when you have no accounts yet.
+- The import sheet can **create the account for you** ("New Account…"), then carries straight on to choosing the file.
+
+### Install and update scripts
+- `scripts/install.sh` sets up Docker if needed, writes `.env`, builds, starts, waits for health and prints your address and setup code. Use `--domain` for public HTTPS, or no options for a home network.
+- `scripts/update.sh` backs up to `./backups`, pulls, rebuilds, restarts and checks health. Pass a tag to switch releases.
+- [docs/INSTALL-PROXMOX.md](docs/INSTALL-PROXMOX.md): a fresh install on a Proxmox VM, step by step.
+- `compose.vm.yaml` for a home server or VM reached by IP now ships with Finta.
+
+**Upgrading from 1.1.0** (the update script arrives with this release, and the install guide had you create `compose.vm.yaml` yourself):
+
+```bash
+cd ~/finta
+mv compose.vm.yaml compose.vm.yaml.old   # only if you created it from the guide
+git pull
+bash scripts/update.sh
+```
+
+From then on, `bash scripts/update.sh` is all you need.
+
 ## 1.1.0 — 2026-09-27
 
 ### Accounts and statement import

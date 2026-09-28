@@ -185,6 +185,17 @@ body {
   min-height: 100dvh; overscroll-behavior-y: none;
 }
 button, input, select, textarea { font: inherit; color: inherit; letter-spacing: inherit; }
+/* Some browsers (Safari, Firefox, Edge with certain settings) paint form controls with their own
+   system text colour, which ignores the page's dark appearance. Pin every control and list row to
+   the app's label colours so text never goes dark-on-dark or light-on-light. */
+input, select, textarea { -webkit-text-fill-color: currentColor; }
+button:disabled { opacity: 1; color: inherit; }
+input:disabled, select:disabled, textarea:disabled { opacity: 1; -webkit-text-fill-color: currentColor; }
+input:disabled, textarea:disabled { color: var(--label-2); }
+select option, select optgroup { background-color: var(--bg-elevated); color: var(--label); }
+input::placeholder, textarea::placeholder { color: var(--label-3); -webkit-text-fill-color: var(--label-3); opacity: 1; }
+.row, button.row, a.row, .group, .card, .sheet, dialog, .review-card, .banner { color: var(--label); }
+input:-webkit-autofill, input:-webkit-autofill:focus { -webkit-text-fill-color: var(--label); -webkit-box-shadow: 0 0 0 100px var(--bg-elevated) inset; caret-color: var(--label); }
 button { cursor: pointer; background: none; border: 0; padding: 0; }
 a { color: var(--tint); text-decoration: none; }
 a:hover { text-decoration: underline; }
@@ -340,6 +351,9 @@ button.row:active, a.row:active { background: color-mix(in srgb, var(--bg-elevat
   width: 28px; height: 28px; border-radius: 50%; background: var(--c, var(--c-blue)); color: #fff; flex: none;
   display: inline-flex; align-items: center; justify-content: center; font-size: .75rem; font-weight: 700;
 }
+/* Light fills (grey, yellow, mint, cyan) are too pale for white initials. */
+.avatar[data-color="gray"] { background: #636366; }
+.avatar[data-color="yellow"], .avatar[data-color="mint"], .avatar[data-color="cyan"] { color: #1c1c1e; }
 .avatar.lg { width: 56px; height: 56px; font-size: 1.375rem; }
 .avatar.sm { width: 24px; height: 24px; font-size: .625rem; }
 .avatar.nav-avatar { width: 32px; height: 32px; font-size: .75rem; }
@@ -766,6 +780,7 @@ a.tile-stat:hover { text-decoration: none; background: color-mix(in srgb, var(--
 .banner { display: flex; align-items: center; gap: 12px; padding: 12px 14px 12px 16px; border-radius: var(--r-group); margin-bottom: 20px;
   background: color-mix(in srgb, var(--c-blue) 12%, var(--bg-elevated)); color: var(--label); }
 a.banner:hover { text-decoration: none; filter: brightness(.98); }
+button.banner { width: 100%; text-align: left; font: inherit; }
 .banner .body { flex: 1; min-width: 0; }
 .banner .title { font-weight: 600; display: block; }
 .banner .sub { font-size: var(--t-subhead); color: var(--label-2); display: block; }

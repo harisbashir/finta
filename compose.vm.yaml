@@ -1,0 +1,29 @@
+# Finta on a home server or VM, reached over your local network by IP (plain HTTP, no proxy).
+# Not for the public internet — use compose.yaml (automatic HTTPS) for that.
+#
+# scripts/install.sh sets this up for you. By hand:
+#   .env:  APP_URL=http://192.168.1.50:3000   (this machine's address, exactly as you'll type it)
+#          TZ=America/Toronto
+#          COMPOSE_FILE=compose.vm.yaml
+#   docker compose up -d --build
+#   docker compose logs finta     # setup code
+services:
+  finta:
+    build: .
+    image: finta:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      ALLOW_INSECURE_HTTP: "true"
+    ports:
+      - "${FINTA_PORT:-3000}:3000"
+    volumes:
+      - finta-data:/data
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+volumes:
+  finta-data:

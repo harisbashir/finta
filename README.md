@@ -37,27 +37,44 @@ Finta runs in a single container on your own server. Everyone in the household s
 
 ## Quick start
 
-### On the internet, with HTTPS (recommended)
+### One command (Linux server or VM)
 
-You need a server with Docker and a domain name (for example `home.example.com`) pointing at it, with ports 80 and 443 open.
+On a fresh Ubuntu, Debian, Fedora or similar machine:
 
 ```bash
-git clone https://github.com/<you>/finta.git && cd finta
+git clone https://github.com/harisbashir/finta.git && cd finta
+bash scripts/install.sh                               # on your home network, http://<this machine's IP>:3000
+bash scripts/install.sh --domain home.example.com     # or: on the internet with automatic HTTPS
+```
+
+The installer adds Docker if it’s missing, writes `.env` for you, builds and starts Finta, waits until it’s healthy, and prints the address and your **setup code**. Open the address, enter the code, and create your household. It’s safe to run again; your settings and data are kept.
+
+Step-by-step for a home server: [Installing on a Proxmox VM](docs/INSTALL-PROXMOX.md).
+
+For the HTTPS setup, point the domain at the server and open ports 80 and 443 first. Caddy gets and renews the certificate automatically.
+
+### By hand
+
+```bash
 cp .env.example .env          # set DOMAIN and APP_URL
 docker compose up -d --build
 docker compose logs finta     # copy the setup code
 ```
 
-Open `https://home.example.com`, enter the setup code, and create your household. Caddy gets and renews the TLS certificate automatically.
+| Compose file | Use it for |
+| --- | --- |
+| `compose.yaml` | The internet, with HTTPS through Caddy |
+| `compose.vm.yaml` | A home server or VM reached by IP on your network (`APP_URL=http://192.168.1.50:3000`) |
+| `compose.local.yaml` | Trying it on your own computer at <http://localhost:3000> |
 
-### On your own computer (try it out)
+Set `COMPOSE_FILE=compose.vm.yaml` in `.env` so plain `docker compose …` commands use it. Turn on **Start with example data** during setup to explore a realistic household.
+
+### Updating
 
 ```bash
-docker compose -f compose.local.yaml up -d --build
-docker compose -f compose.local.yaml logs finta   # setup code
+bash scripts/update.sh            # backs up to ./backups, pulls, rebuilds, restarts, checks health
+bash scripts/update.sh v1.1.1     # or switch to a specific release
 ```
-
-Then open <http://localhost:3000>. Turn on **Start with example data** during setup to explore a realistic household.
 
 ### Invite your household
 
@@ -89,7 +106,7 @@ Every schedule counts forward from its first due date, so it never drifts. A bil
 
 ## Importing statements
 
-1. **Money → Accounts → +** to add each chequing account, savings account, credit card and line of credit. For cards and credit lines, add the rate and minimum payment so the Debts planner can use them.
+1. **Money → Import** (or **Money → Accounts → +**) to add each chequing account, savings account, credit card and line of credit. For cards and credit lines, add the rate and minimum payment so the Debts planner can use them.
 2. On your bank’s website, download transactions as **CSV** for any date range.
 3. Open the account, tap **Import Statement**, choose the file, check the preview, and import.
 
@@ -186,11 +203,7 @@ docker compose exec finta node server/cli.js unlock         you@example.com
 
 ### Updating
 
-```bash
-git pull && docker compose up -d --build
-```
-
-Database migrations run automatically when the container starts.
+Run `bash scripts/update.sh`. It saves a backup to `./backups`, pulls the new code, rebuilds, restarts, and checks that Finta is healthy. Database migrations run automatically when the container starts. By hand, it’s `git pull && docker compose up -d --build`.
 
 ## Development
 

@@ -16,12 +16,20 @@ function setScope(v) { try { localStorage.setItem('finta-scope', v); } catch { /
 export async function scopeSwitch(onChange) {
   const members = await getMembers();
   if (members.length < 2) return { markup: '', wire: () => {} };
-  const cur = getScope();
   return {
-    markup: html`<div class="scope" role="group" aria-label="Show money for">
+    // A getter, so every render reflects the current choice.
+    get markup() {
+      const cur = getScope();
+      return html`<div class="scope" role="group" aria-label="Show money for">
       <button data-scope="household" aria-pressed="${String(cur === 'household')}">${S.household.name}</button>
-      <button data-scope="me" aria-pressed="${String(cur === 'me')}">Just Me</button></div>`,
-    wire: (root) => $$('[data-scope]', root).forEach((b) => b.addEventListener('click', () => { setScope(b.dataset.scope); onChange(); })),
+      <button data-scope="me" aria-pressed="${String(cur === 'me')}">Just Me</button></div>`;
+    },
+    wire: (root) => $$('[data-scope]', root).forEach((b) => b.addEventListener('click', () => {
+      if (b.getAttribute('aria-pressed') === 'true') return;
+      setScope(b.dataset.scope);
+      $$('[data-scope]', root).forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+      onChange();
+    })),
   };
 }
 
@@ -55,7 +63,10 @@ async function overview(v) {
   let ym = S.today.slice(0, 7);
   let m, ins, accounts, debts;
   const sw = await scopeSwitch(() => load());
-  v.setToolbar(html`<button class="bar-btn icon-only" data-add aria-label="Add expense">${icon('plus')}</button>`, { '[data-add]': () => expenseSheet({ onSaved: load }) });
+  v.setToolbar(html`<button class="bar-btn" data-import>${icon('download')}<span>Import</span></button><button class="bar-btn icon-only" data-add aria-label="Add expense">${icon('plus')}</button>`, {
+    '[data-add]': () => expenseSheet({ onSaved: load }),
+    '[data-import]': async () => (await import('./accounts.js')).importSheet({ accounts, onDone: load }),
+  });
 
   async function load() {
     const scope = getScope();
@@ -86,6 +97,8 @@ async function overview(v) {
       ${sw2.markup}
       ${m.needsReview ? html`<a class="banner" href="#/money/review"><span class="tile" data-color="blue">${icon('tag')}</span>
         <span class="body"><span class="title">${plural(m.needsReview, 'transaction')} to sort</span><span class="sub">One tap each — Finta remembers for next time.</span></span>${icon('chevron-right', 'chev')}</a>` : ''}
+      ${!accounts.length ? html`<button type="button" class="banner" data-import-cta><span class="tile" data-color="blue">${icon('download')}</span>
+        <span class="body"><span class="title">Import Your Bank Statements</span><span class="sub">Add an account, choose its CSV, and Finta sorts every transaction.</span></span>${icon('chevron-right', 'chev')}</button>` : ''}
       ${monthSwitcher(ym)}
       ${monthCard(m, { title: fmtMonth(ym) + (scope === 'me' ? ' · Just Me' : '') })}
 
@@ -136,6 +149,7 @@ async function overview(v) {
       </div>`);
     hydrate(v.el);
     sw2.wire(v.el);
+    $('[data-import-cta]', v.el)?.addEventListener('click', async () => (await import('./accounts.js')).importSheet({ accounts, onDone: load }));
     if (hasTrend) columns($('#trend-chart', v.el), {
       labels: trend.map((t) => shortMonth(t.month)), fullLabels: trend.map((t) => fmtMonth(t.month)), caption: 'Money in and out by month',
       series: [{ name: 'In', cls: 'c-in', values: trend.map((t) => t.in) }, { name: 'Out', cls: 'c-out', values: trend.map((t) => t.out) }],

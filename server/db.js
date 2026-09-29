@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runUpgrades } from './lib/upgrades.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -16,6 +17,7 @@ export function openDatabase(file) {
     PRAGMA synchronous = NORMAL;
   `);
   migrate(db);
+  runUpgrades(db);
   return db;
 }
 

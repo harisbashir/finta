@@ -823,7 +823,16 @@ button.banner { width: 100%; text-align: left; font: inherit; }
 .review-card { background: var(--bg-elevated); border-radius: var(--r-group); padding: 14px 16px; margin-bottom: 14px; }
 .review-card .rc-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
 .review-card .rc-name { font-weight: 600; }
-.review-card .rc-meta { color: var(--label-2); font-size: var(--t-footnote); margin: 2px 0 12px; }
+.review-card .rc-meta { color: var(--label-2); font-size: var(--t-footnote); margin: 2px 0 12px; overflow-wrap: anywhere; }
+.review-card .rc-total { display: flex; flex-direction: column; align-items: flex-end; text-align: right; flex: none; }
+.review-card .rc-total .caption { font-size: var(--t-caption); color: var(--label-2); }
+.review-card .rc-rows { margin: -6px 0 12px; font-size: var(--t-footnote); }
+.review-card .rc-rows summary { color: var(--tint); cursor: pointer; width: max-content; padding: 4px 0; }
+.review-card .rc-rows table { width: 100%; border-collapse: collapse; margin-top: 4px; table-layout: fixed; }
+.review-card .rc-rows td { padding: 5px 0; border-top: 0.5px solid var(--separator); vertical-align: top; }
+.review-card .rc-rows td.when { width: 6.5em; color: var(--label-2); white-space: nowrap; }
+.review-card .rc-rows td.desc { color: var(--label-2); overflow-wrap: anywhere; padding-right: 8px; }
+.review-card .rc-rows td.amt { width: 7.5em; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .review-card .chips { padding-bottom: 4px; flex-wrap: wrap; overflow: visible; }
 .review-card .chip { background: var(--bg); }
 .review-card .chip .tile { width: 20px; height: 20px; border-radius: 6px; }

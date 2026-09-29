@@ -12,7 +12,7 @@ import crypto from 'node:crypto';
 import { parseCsv, detectMapping, extractRows } from './csv.js';
 import { merchantKey, displayName, guessCategory, looksLikeTransfer } from './merchant.js';
 import { occurrences, addDays, diffDays } from './dates.js';
-import { loanSplit } from './finance.js';
+import { loanSplit, setAnchor } from './finance.js';
 import { tx as inTx } from '../db.js';
 
 export const MAX_ROWS = 5000;
@@ -107,7 +107,9 @@ export function classify(ctx, row) {
     return out;
   }
   if (guess) { out.category_id = catId(ctx, guess); out.cat_source = out.category_id ? 'auto' : null; }
-  if (!out.category_id && row.direction === 'in' && looksLikeTransfer(row.description)) out.transfer_hint = true;
+  // Money in with transfer wording may be one of your own transfers, but an e-transfer from a person isn't.
+  const fromPerson = /\b(E-?\s?TRANSFER|INTERAC E|E-?TFR|ETFR|EMT)\b/i.test(row.description);
+  if (!out.category_id && row.direction === 'in' && !fromPerson && looksLikeTransfer(row.description)) out.transfer_hint = true;
   return out;
 }
 
@@ -191,18 +193,37 @@ export function previewImport(db, account, csvText, override) {
   };
 }
 
-/** The closing balance printed on the statement, if the file has a balance column. */
-function statementBalance(rows, account) {
+/**
+ * The closing balance printed on the statement, if the file has a balance column: the balance
+ * after the last transaction of the last day. Banks list rows oldest-first or newest-first, and
+ * several rows can share the last date, so the running balance itself decides which row was last.
+ */
+export function statementBalance(rows, account) {
   const withBal = rows.filter((r) => r.balance !== null && r.balance !== undefined);
   if (!withBal.length) return null;
-  const ascending = rows.length < 2 || rows[0].date <= rows[rows.length - 1].date;
-  const last = ascending ? withBal[withBal.length - 1] : withBal[0];
+  const lastDate = withBal.reduce((m, r) => (r.date > m ? r.date : m), withBal[0].date);
+  const sameDay = withBal.filter((r) => r.date === lastDate);
+  let last = null;
+  if (sameDay.length === 1) last = sameDay[0];
+  else {
+    // The last row is the one no other same-day row continues from: next.balance = this.balance ± next.amount.
+    for (const sign of [1, -1]) {                       // bank accounts (+ in) and cards (+ owed) move opposite ways
+      const signed = (r) => sign * (r.direction === 'in' ? r.amount : -r.amount);
+      const ends = sameDay.filter((c) => !sameDay.some((x) => x !== c && Math.abs(x.balance - (c.balance + signed(x))) <= 1));
+      if (ends.length === 1) { last = ends[0]; break; }
+    }
+    if (!last) {
+      // Fall back to file order: the end of the file for oldest-first files, the start for newest-first.
+      const ascending = rows[0].date <= rows[rows.length - 1].date;
+      last = ascending ? sameDay[sameDay.length - 1] : sameDay[0];
+    }
+  }
   const owed = ['credit_card', 'line_of_credit'].includes(account.type);
   return { date: last.date, amount: owed ? -Math.abs(last.balance) : last.balance };
 }
 
 /** Write the import. Returns a summary for the "Imported" screen. */
-export function commitImport(db, account, csvText, override, { userId, filename, useStatementBalance = true }) {
+export function commitImport(db, account, csvText, override, { userId, filename, useStatementBalance = true, closingBalance = null }) {
   const st = readStatement(account, csvText, override);
   const ctx = loadContext(db, account.household_id);
   const rows = withFingerprints(account.id, st.parsed);
@@ -242,13 +263,16 @@ export function commitImport(db, account, csvText, override, { userId, filename,
     const { headers, ...keep } = st.mapping;
     db.prepare('UPDATE accounts SET csv_mapping = ? WHERE id = ?').run(JSON.stringify(keep), account.id);
 
-    // Line the account balance up with the statement's own closing balance.
-    const sb = statementBalance(st.parsed, account);
-    if (sb && useStatementBalance) {
-      const net = db.prepare(`SELECT COALESCE(SUM(CASE direction WHEN 'in' THEN amount ELSE -amount END), 0) AS n
-        FROM transactions WHERE account_id = ? AND date <= ?`).get(account.id, sb.date).n;
-      db.prepare('UPDATE accounts SET opening_balance = ? WHERE id = ?').run(sb.amount - net, account.id);
-      summary.balanceUpdated = sb;
+    // Pin the balance to the statement: its own closing balance, or the one you typed in the preview
+    // (for files without a balance column). An older statement never overrides a newer balance.
+    let sb = useStatementBalance ? statementBalance(st.parsed, account) : null;
+    if (!sb && closingBalance && Number.isInteger(closingBalance.amount) && dates.length) {
+      const owed = ['credit_card', 'line_of_credit'].includes(account.type);
+      sb = { date: dates.at(-1), amount: owed ? -Math.abs(closingBalance.amount) : closingBalance.amount };
+    }
+    if (sb) {
+      if (setAnchor(db, account, sb.amount, sb.date, 'statement')) summary.balanceUpdated = sb;
+      else summary.balanceKept = { date: account.anchor_date };
     }
     return { importId, ...summary, from: dates[0] || null, to: dates.at(-1) || null };
   });

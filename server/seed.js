@@ -23,6 +23,7 @@ const CATEGORIES = [
   ['Pets', 'out', 'brown', 'paw-print', null],
   ['Debt', 'out', 'brown', 'credit-card', null],
   ['Fees & Interest', 'out', 'brown', 'receipt', null],
+  ['Taxes', 'out', 'gray', 'landmark', null],
   ['Other', 'out', 'gray', 'tag', null],
   ['Salary', 'in', 'green', 'briefcase', null],
   ['Other Income', 'in', 'mint', 'circle-plus', null],

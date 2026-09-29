@@ -73,11 +73,27 @@ export const debtForRecurring = (db, recurringId) =>
 // ───────── Accounts ─────────
 
 export function accountBalances(db, householdId) {
-  const rows = db.prepare(`SELECT a.id, a.opening_balance + COALESCE(SUM(CASE t.direction WHEN 'in' THEN t.amount ELSE -t.amount END), 0) AS balance,
+  // Anchored accounts: the known balance on anchor_date plus everything dated after it.
+  // Others: opening balance plus every transaction.
+  const rows = db.prepare(`SELECT a.id,
+      COALESCE(a.anchor_balance, a.opening_balance) + COALESCE(SUM(CASE WHEN a.anchor_date IS NULL OR t.date > a.anchor_date
+        THEN (CASE t.direction WHEN 'in' THEN t.amount ELSE -t.amount END) ELSE 0 END), 0) AS balance,
       MAX(t.date) AS last_date, COUNT(t.id) AS count
     FROM accounts a LEFT JOIN transactions t ON t.account_id = a.id
     WHERE a.household_id = ? GROUP BY a.id`).all(householdId);
   return new Map(rows.map((r) => [r.id, r]));
+}
+
+/**
+ * Pin an account's balance: `amount` (signed: negative = owed) at the end of `date`.
+ * An older anchor never replaces a newer one unless `force` (you typing a balance always wins).
+ * Returns true when the anchor changed.
+ */
+export function setAnchor(db, account, amount, date, source, { force = false } = {}) {
+  if (!force && account.anchor_date && date < account.anchor_date) return false;
+  db.prepare('UPDATE accounts SET anchor_balance = ?, anchor_date = ?, anchor_source = ? WHERE id = ?').run(amount, date, source, account.id);
+  account.anchor_balance = amount; account.anchor_date = date; account.anchor_source = source;
+  return true;
 }
 
 /** Current balance of every debt: from its account when it follows one, otherwise stored. */

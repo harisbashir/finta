@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.1.2 — 2026-09-28
+
+### Fixed
+- **Review showed wrong amounts for chequing and savings.** Bank details such as “Point of Sale - Visa Debit VISA DEBIT RETAIL PURCHASE PAY TO: CRA 6085…”, “Internet Banking E-TRANSFER 1061… ALI MOHAMMAD…” and “Branch Transaction INTEREST” were read as the payee “Point of Sale”, “Internet Banking Transfer” and so on. Unrelated transactions were lumped into one card, and its amount was their combined total. Finta now reads past the bank’s label to the real payee (CRA, the person’s name, Interest, the shop), in Scotiabank, TD, RBC, CIBC and BMO wording.
+- **Rows you already imported are fixed when you update.** They’re re-read with the new payee names. A rule learned from a bank label (for example “Remember for POINT OF SALE”) is removed, because it applied one category to unrelated shops, and those rows go back to Review. Everything else is sorted again automatically.
+- **Account balances drifted.** A balance typed when creating an account used to become the account’s *opening* balance, so importing older statements afterwards added that history on top. A balance is now tied to a date (“Balance On”). Transactions after that date are added to it; earlier ones are already included. Existing accounts are pinned to the day their balance was typed.
+- **Statement closing balance** is now read from the running balance itself, so it’s right when a file lists newest-first or has several rows on its last day. An older statement never overrides a newer balance.
+- The import preview no longer calls an incoming e-transfer from a person a “Transfer”.
+
+### Improved
+- **Review cards** show one amount when it’s one transaction, “$X each” when it repeats, or a labelled total, plus the date range and **Show all** with every row and its amount.
+- **Balance On** date when adding or editing an account. The account page says where its balance comes from.
+- When a statement has no balance column, the import preview offers an optional **Balance on <last date>** field that keeps the account exact.
+- A **Check This Balance** prompt on accounts whose balance is only a sum of transactions.
+- **Taxes** category. CRA payments and instalments sort into it; CRA deposits (GST/HST credit, CCB, refunds) are Other Income.
+- Interest on savings is recognized (Other Income in, Fees & Interest out). Scotiabank “Customer Transfer” is a transfer. More restaurant names are recognized (kabab, biryani, tandoori…).
+
 ## 1.1.1 — 2026-09-28
 
 ### Fixed

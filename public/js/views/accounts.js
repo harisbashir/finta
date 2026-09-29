@@ -1,6 +1,6 @@
 // Accounts: chequing, savings, credit cards and credit lines; statement import; the Review inbox.
 import { api } from '../api.js';
-import { html, raw, icon, $, $$, S, money, fmtDate, fmtMonth, relDay, sheet, toast, confirmDialog, fText, fMoney, fSelect, fToggle, fNumber,
+import { html, raw, icon, $, $$, S, money, fmtDate, fmtMonth, relDay, sheet, toast, confirmDialog, fText, fMoney, fSelect, fToggle, fNumber, fDate,
   emptyState, hydrate, plural, centsToInput, addMonthsYM, segmented } from '../ui.js';
 import { lines } from '../charts.js';
 import { getCategories, getMembers, invalidate } from '../store.js';
@@ -94,7 +94,10 @@ async function accountDetail(v, id) {
         <div class="label">${t.owes ? (a.balance > 0 ? 'Credit balance' : 'Balance owed') : 'Balance'}${a.institution ? ` · ${a.institution}` : ''}${a.last4 ? ` ••${a.last4}` : ''}</div>
         <div class="value">${t.owes ? money(Math.abs(a.balance)) : money(a.balance)}</div>
         <div class="sub">${[a.owner_id === null ? 'Joint account' : a.owner_name ? `${a.owner_name}’s account` : '', a.credit_limit ? `${money(Math.max(0, a.credit_limit - (a.owed || 0)), { short: true })} available of ${money(a.credit_limit, { short: true })}` : '', a.debt?.rate ? `${a.debt.rate}% interest` : ''].filter(Boolean).join(' · ')}</div>
+        ${a.balance_date ? html`<div class="sub">${a.balance_source === 'statement' ? 'From your statement' : 'From the balance you entered'} on ${fmtDate(a.balance_date)}, plus everything since.</div>` : ''}
       </div>
+      ${a.can_edit && a.can_view && a.count && !a.balance_date ? html`<button type="button" class="banner warn" data-set-balance><span class="tile" data-color="orange">${icon('banknote')}</span>
+        <span class="body"><span class="title">Check This Balance</span><span class="sub">Your statements don’t include a balance, so Finta is adding up transactions. Enter the balance from your bank once and it stays right.</span></span>${icon('chevron-right', 'chev')}</button>` : ''}
       ${a.can_edit ? html`<div class="btn-row section"><button class="btn prominent" data-import>${icon('download')} Import Statement</button></div>` : ''}
       ${hist.length > 2 ? html`<section class="section card"><div class="card-head"><h3>${t.owes ? 'Owed Over Time' : 'Balance Over Time'}</h3></div>
         <p class="card-sub">Closing balance each day. Hover or use arrow keys to read a day.</p><div id="bal-chart"></div></section>` : ''}
@@ -120,6 +123,7 @@ async function accountDetail(v, id) {
       caption: `${a.name} ${t.owes ? 'amount owed' : 'balance'} over time`,
     });
     $('[data-import]', v.el)?.addEventListener('click', () => importSheet({ account: a, onDone: load }));
+    $('[data-set-balance]', v.el)?.addEventListener('click', () => accountSheet({ account: a, onSaved: load, onDeleted: () => v.go('#/money/accounts') }));
     $$('[data-filter]', v.el).forEach((b) => b.addEventListener('click', () => { filter = b.dataset.filter; load(); }));
     const s = $('[data-search]', v.el);
     s?.addEventListener('input', () => { q = s.value; const pos = s.selectionStart; render(); const n = $('[data-search]', v.el); n.focus(); n.setSelectionRange(pos, pos); });
@@ -155,10 +159,13 @@ export async function accountSheet({ account = null, type = null, onSaved, onDel
           ${fText('last4', 'Last 4 Digits', account?.last4 || '', { placeholder: 'Optional', inputmode: 'numeric', maxlength: 4 })}
         </div>
         <div class="group">
-          ${fMoney('current_balance', t.owes ? 'Amount Owed' : 'Current Balance', current, { placeholder: '0.00' })}
+          ${fMoney('current_balance', t.owes ? 'Amount Owed' : 'Balance', current, { placeholder: '0.00' })}
+          ${fDate('balance_date', t.owes ? 'Owed On' : 'Balance On', account?.balance_date || S.today)}
           ${t.owes ? fMoney('credit_limit', 'Credit Limit', account?.credit_limit, { placeholder: 'Optional' }) : ''}
         </div>
-        <p class="hint">${account ? 'Changing this re-anchors the balance without touching transactions.' : 'What your bank shows today. Imported statements with a balance column keep it in sync.'}</p>
+        <p class="hint">${account
+          ? 'Enter the balance your bank shows for a date, such as today or the end of your last statement. Transactions after that date are added to it; earlier ones are already included.'
+          : 'What your bank shows today, or on the last day of the statement you’re about to import. Transactions after that date are added to it; earlier ones are already included.'}</p>
         ${t.owes && !account ? html`<div class="group-label">For the Debts Planner</div><div class="group">
           ${fNumber('rate', 'Interest Rate', '', { placeholder: '20.99', suffix: '%' })}
           ${fMoney('min_payment', 'Minimum Payment', null, { placeholder: 'Optional' })}
@@ -181,8 +188,13 @@ export async function accountSheet({ account = null, type = null, onSaved, onDel
     },
     onSubmit: async (v) => {
       if (v.owner_id === null && members.length < 2) v.owner_id = S.user.id;
-      if (v.current_balance == null) delete v.current_balance;
-      if (account) { if (v.current_balance === (ACCOUNT_TYPES[k].owes ? Math.abs(account.balance) : account.balance)) delete v.current_balance; await api.patch(`/api/accounts/${account.id}`, v); }
+      if (v.balance_date && v.balance_date > S.today) throw Object.assign(new Error('Choose today or an earlier date.'), { field: 'balance_date' });
+      if (v.current_balance == null) { delete v.current_balance; delete v.balance_date; }
+      if (account) {
+        const same = v.current_balance === (ACCOUNT_TYPES[k].owes ? Math.abs(account.balance) : account.balance) && (v.balance_date || S.today) === (account.balance_date || S.today);
+        if (same) { delete v.current_balance; delete v.balance_date; }
+        await api.patch(`/api/accounts/${account.id}`, v);
+      }
       let created = null;
       if (!account) created = await api.post('/api/accounts', v);
       toast(account ? 'Saved' : `Added ${v.name}`);
@@ -216,7 +228,8 @@ export function importSheet({ account = null, accounts = [], onDone } = {}) {
           <p>${[result.duplicates ? `${result.duplicates} already here` : '', result.bills ? `${plural(result.bills, 'bill')} marked paid` : '', result.transfers ? `${plural(result.transfers, 'transfer')} matched` : ''].filter(Boolean).join(' · ') || 'All sorted.'}</p></div>
         ${result.needsReview ? html`<a class="banner" href="#/money/review" data-go-review><span class="tile" data-color="blue">${icon('tag')}</span><span class="body"><span class="title">${plural(result.needsReview, 'transaction')} to sort</span><span class="sub">Finta learns from each one.</span></span>${icon('chevron-right', 'chev')}</a>`
           : html`<p class="section-foot">Everything was categorized automatically.</p>`}
-        ${result.balanceUpdated ? html`<p class="section-foot">Balance set to ${money(Math.abs(result.balanceUpdated.amount))} from the statement (${fmtDate(result.balanceUpdated.date)}).</p>` : ''}
+        ${result.balanceUpdated ? html`<p class="section-foot">Balance set to ${money(Math.abs(result.balanceUpdated.amount))} as of ${fmtDate(result.balanceUpdated.date)}.</p>` : ''}
+        ${result.balanceKept ? html`<p class="section-foot">Kept the newer balance from ${fmtDate(result.balanceKept.date)}; this statement is older.</p>` : ''}
       </div>`;
       const p = preview;
       const cols = p.headers.map((h, i) => [i, h || `Column ${i + 1}`]);
@@ -246,7 +259,9 @@ export function importSheet({ account = null, accounts = [], onDone } = {}) {
           </div>
           <div class="btn-row"><button class="btn small" type="button" data-remap>Update Preview</button></div>
         </details>
-        ${p.statementBalance ? html`<div class="group">${fToggle('useBalance', 'Use Statement Balance', true, `Set the balance to ${money(Math.abs(p.statementBalance.amount))} as of ${fmtDate(p.statementBalance.date)}.`)}</div>` : ''}
+        ${p.statementBalance ? html`<div class="group">${fToggle('useBalance', 'Use Statement Balance', true, `Set the balance to ${money(Math.abs(p.statementBalance.amount))} as of ${fmtDate(p.statementBalance.date)}.`)}</div>`
+          : p.stats.to ? html`<div class="group">${fMoney('closingBalance', ACCOUNT_TYPES[acc.type]?.owes ? `Owed on ${fmtDate(p.stats.to)}` : `Balance on ${fmtDate(p.stats.to)}`, null, { placeholder: '0.00' })}</div>
+            <p class="hint">Optional. This file has no balance column, so type the closing balance from your statement and Finta keeps this account’s balance exact.</p>` : ''}
         <div class="group-label">First ${Math.min(p.rows.length, 25)} of ${p.total} rows</div>
         <table class="preview-table"><tbody>
           ${p.rows.slice(0, 25).map((r) => html`<tr class="${r.duplicate ? 'dup' : ''}">
@@ -298,7 +313,10 @@ export function importSheet({ account = null, accounts = [], onDone } = {}) {
     onSubmit: async (v) => {
       if (step === 'done') return;
       busy = true;
-      result = await api.post(`/api/accounts/${acc.id}/import`, { csv, filename, mapping, useStatementBalance: v.useBalance !== false });
+      result = await api.post(`/api/accounts/${acc.id}/import`, {
+        csv, filename, mapping, useStatementBalance: v.useBalance !== false,
+        closingBalance: Number.isInteger(v.closingBalance) ? { amount: v.closingBalance } : null,
+      });
       step = 'done';
       s.setTitle('Imported');
       s.rerender();
@@ -320,6 +338,22 @@ export function importSheet({ account = null, accounts = [], onDone } = {}) {
 }
 
 // ─────────── Review inbox ───────────
+/** Card header: one amount when it's one row (or the same amount each time), a labelled total otherwise, and the rows behind it. */
+function reviewHead(g) {
+  const sign = g.direction === 'in' ? '+' : '';
+  const n = g.rows.length;
+  const same = n > 1 && g.rows.every((r) => r.amount === g.rows[0].amount);
+  const accounts = [...new Set(g.rows.map((r) => r.account_name))].join(', ');
+  const amount = n === 1 ? html`<span class="amount ${g.direction === 'in' ? 'text-pos' : ''}">${sign}${money(g.total)}</span>`
+    : same ? html`<span class="rc-total"><span class="amount ${g.direction === 'in' ? 'text-pos' : ''}">${sign}${money(g.rows[0].amount)}</span><span class="caption">each · ${money(g.total)} total</span></span>`
+    : html`<span class="rc-total"><span class="amount ${g.direction === 'in' ? 'text-pos' : ''}">${sign}${money(g.total)}</span><span class="caption">total of ${n}</span></span>`;
+  return html`<div class="rc-head"><span class="rc-name">${g.name}</span>${amount}</div>
+    <div class="rc-meta">${n === 1 ? `${fmtDate(g.rows[0].date)} · ${accounts}` : `${n} transactions · ${fmtDate(g.rows.at(-1).date)} – ${fmtDate(g.rows[0].date)} · ${accounts}`}<br>${g.rows[0].description}</div>
+    ${n > 1 ? html`<details class="rc-rows"><summary>Show all ${n}</summary><table><tbody>
+      ${g.rows.map((r) => html`<tr><td class="when">${fmtDate(r.date)}</td><td class="desc">${r.description}</td><td class="amt ${r.direction === 'in' ? 'text-pos' : ''}">${sign}${money(r.amount)}</td></tr>`)}
+    </tbody></table></details>` : ''}`;
+}
+
 export async function mountReview(v) {
   let data, cats, recurring;
   const load = async () => {
@@ -335,15 +369,14 @@ export async function mountReview(v) {
         const list = g.direction === 'in' ? [...inc, ...out] : out;
         const bills = recurring.filter((r) => r.direction === g.direction && !r.paused);
         return html`<article class="review-card" data-group="${gi}">
-          <div class="rc-head"><span class="rc-name">${g.name}</span><span class="amount ${g.direction === 'in' ? 'text-pos' : ''}">${g.direction === 'in' ? '+' : ''}${money(g.total)}</span></div>
-          <div class="rc-meta">${g.rows.length > 1 ? `${g.rows.length} times · ` : ''}${g.rows.slice(0, 3).map((r) => fmtDate(r.date)).join(', ')}${g.rows.length > 3 ? '…' : ''} · ${g.rows[0].account_name}<br>${g.rows[0].description}</div>
+          ${reviewHead(g)}
           <div class="chips" role="group" aria-label="Category for ${g.name}">
             ${list.map((c) => html`<button class="chip" data-cat="${c.id}"><span class="tile" data-color="${c.color}">${icon(c.icon)}</span>${c.name}</button>`)}
             <button class="chip" data-transfer>${icon('refresh-cw', 'icon-sm')} Transfer</button>
           </div>
           <div class="rc-foot">
             ${bills.length ? html`<label>${g.direction === 'in' ? 'It’s income:' : 'It’s a bill:'} <select data-bill><option value="">Choose…</option>${bills.map((b) => html`<option value="${b.id}">${b.name}</option>`)}</select></label>` : ''}
-            <label><input type="checkbox" data-remember checked> Remember for ${g.key || 'similar'}</label>
+            <label><input type="checkbox" data-remember checked> Remember for ${g.label || g.name || 'similar'}</label>
           </div>
         </article>`;
       }) : html`<div class="group">${emptyState('circle-check', 'Nothing to sort', 'New imports land here only when Finta can’t tell what something is.')}</div>`}

@@ -101,8 +101,8 @@ before(async () => {
   const inv = await owner.post('/api/household/invites');
   partner = client(srv.base);
   await partner.post(`/api/invites/${inv.data.url.split('/join/')[1]}/accept`, { name: 'Sam', email: 'sam@example.com', password: 'another good phrase' });
-  cheq = (await owner.post('/api/accounts', { name: 'Everyday Chequing', type: 'chequing', institution: 'TD', current_balance: 300000 })).data;
-  card = (await owner.post('/api/accounts', { name: 'TD Visa', type: 'credit_card', current_balance: 0, credit_limit: 500000, rate: 19.99 })).data;
+  cheq = (await owner.post('/api/accounts', { name: 'Everyday Chequing', type: 'chequing', institution: 'TD', current_balance: 300000, balance_date: addDays(m0, -10) })).data;
+  card = (await owner.post('/api/accounts', { name: 'TD Visa', type: 'credit_card', current_balance: 0, balance_date: addDays(m0, -10), credit_limit: 500000, rate: 19.99 })).data;
 });
 after(async () => { await srv.close(); });
 

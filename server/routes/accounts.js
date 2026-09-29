@@ -2,7 +2,7 @@
 import { bad, notFound, forbidden } from '../lib/http.js';
 import { validate, t } from '../lib/validate.js';
 import { getOwned, insertRow, updateRow } from '../lib/crud.js';
-import { accountBalances, TX_JOINS, TX_VISIBLE } from '../lib/finance.js';
+import { accountBalances, setAnchor, TX_JOINS, TX_VISIBLE } from '../lib/finance.js';
 import { previewImport, commitImport, undoImport, learnRule, applyRule, loadContext, pairTransfers, unpairTransfer,
   linkToOccurrence, nearestOccurrence, recurringSuggestions, restorePrincipal } from '../lib/importer.js';
 import { merchantKey, displayName } from '../lib/merchant.js';
@@ -39,11 +39,20 @@ function present(a, bal, user, users) {
     credit_limit: a.credit_limit, balance, owed: OWES.includes(a.type) ? Math.max(0, -balance) : null,
     last_date: b?.last_date || null, count: visible ? b?.count || 0 : null,
     can_view: visible, can_edit: canEditAccount(a, user),
+    balance_date: a.anchor_date || null, balance_source: a.anchor_source || null,
   };
 }
 
 export function bankAccountRoutes(r) {
   const today = (ctx) => ctx.today();
+  /** "Balance on" date sent with a typed balance: today by default, never in the future. */
+  const balanceDate = (ctx) => {
+    const d = ctx.body.balance_date;
+    if (d === undefined || d === null || d === '') return today(ctx);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(d)) || Number.isNaN(Date.parse(d))) throw bad('Use a real date for the balance.', { field: 'balance_date' });
+    if (d > today(ctx)) throw bad('The balance date can’t be in the future.', { field: 'balance_date' });
+    return d;
+  };
   const usersMap = (ctx) => new Map(ctx.db.prepare('SELECT id, name FROM users WHERE household_id = ?').all(ctx.household.id).map((u) => [u.id, u]));
   const loadAccount = (ctx, id, { edit = false, view = false } = {}) => {
     const a = getOwned(ctx.db, 'accounts', id, ctx.household.id);
@@ -68,6 +77,8 @@ export function bankAccountRoutes(r) {
     v.opening_balance = OWES.includes(v.type) ? -Math.abs(current) : current;
     const row = tx(ctx.db, () => {
       const acc = insertRow(ctx.db, 'accounts', ctx.household.id, v);
+      // A balance typed in now is today's balance: statements imported later fill in history behind it.
+      if ('current_balance' in ctx.body && ctx.body.current_balance !== null) setAnchor(ctx.db, acc, v.opening_balance, balanceDate(ctx), 'you', { force: true });
       if (OWES.includes(v.type) && ctx.body.track_debt !== false) {
         const d = validate(ctx.body, { rate: t.real(0, 100, { label: 'interest rate' }), min_payment: t.money({ label: 'minimum payment' }) });
         ctx.db.prepare(`INSERT INTO debts (household_id, owner_id, name, type, lender, rate, min_payment, account_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
@@ -87,8 +98,7 @@ export function bankAccountRoutes(r) {
     if ('current_balance' in ctx.body) {
       const cur = validate(ctx.body, { current_balance: t.int(-100_000_000_000, 100_000_000_000, { required: true, label: 'balance' }) }).current_balance;
       const target = OWES.includes(v.type || a.type) ? -Math.abs(cur) : cur;
-      const net = ctx.db.prepare(`SELECT COALESCE(SUM(CASE direction WHEN 'in' THEN amount ELSE -amount END), 0) AS n FROM transactions WHERE account_id = ?`).get(a.id).n;
-      v.opening_balance = target - net;
+      setAnchor(ctx.db, a, target, balanceDate(ctx), 'you', { force: true });
     }
     const row = updateRow(ctx.db, 'accounts', a.id, ctx.household.id, v);
     if (v.name) ctx.db.prepare('UPDATE debts SET name = ? WHERE account_id = ?').run(v.name, a.id);
@@ -151,6 +161,7 @@ export function bankAccountRoutes(r) {
     try {
       res = commitImport(ctx.db, a, csv, ctx.body.mapping || {}, {
         userId: ctx.user.id, filename: ctx.body.filename, useStatementBalance: ctx.body.useStatementBalance !== false,
+        closingBalance: ctx.body.closingBalance ?? null,
       });
     } catch (e) { throw bad(e.message); }
     audit(ctx, 'statement.imported', `${a.name}: ${res.imported} rows`);
@@ -183,12 +194,12 @@ export function bankAccountRoutes(r) {
     const rows = ctx.db.prepare(`SELECT t.*, a.name AS account_name, a.type AS account_type ${TX_JOINS}
       WHERE t.household_id = ? AND ${TX_VISIBLE} AND t.category_id IS NULL AND t.is_transfer = 0 AND t.recurring_id IS NULL AND t.goal_id IS NULL
         AND t.account_id IS NOT NULL
-      ORDER BY t.date DESC LIMIT 300`).all(ctx.household.id, ctx.user.id);
+      ORDER BY t.date DESC LIMIT 1000`).all(ctx.household.id, ctx.user.id);
     // Group by merchant so one decision can cover many rows.
     const groups = new Map();
     for (const row of rows) {
       const k = `${row.direction}|${row.merchant || row.description}`;
-      if (!groups.has(k)) groups.set(k, { key: row.merchant, direction: row.direction, name: row.note || displayName(row.merchant || ''), rows: [], total: 0 });
+      if (!groups.has(k)) groups.set(k, { key: row.merchant, label: displayName(row.merchant || ''), direction: row.direction, name: row.note || displayName(row.merchant || ''), rows: [], total: 0 });
       const g = groups.get(k); g.rows.push(row); g.total += row.amount;
     }
     return { count: rows.length, groups: [...groups.values()].sort((a, b) => b.rows.length - a.rows.length || b.total - a.total) };

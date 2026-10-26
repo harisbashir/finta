@@ -23,6 +23,7 @@ CREATE TABLE alexa_items (
   kind          TEXT    NOT NULL CHECK (kind IN ('item','task')),
   finta_id      INTEGER NOT NULL,                 -- shopping_items.id or tasks.id
   finta_list_id INTEGER,                          -- shopping_lists.id for items; NULL for tasks
+  finta_created TEXT,                             -- the Finta row's created_at: SQLite reuses deleted ids
   name          TEXT    NOT NULL,                 -- snapshot from the last sync
   checked       INTEGER NOT NULL,
   version       INTEGER NOT NULL,
@@ -30,3 +31,9 @@ CREATE TABLE alexa_items (
   UNIQUE (household_id, kind, finta_id)
 );
 CREATE INDEX alexa_items_list ON alexa_items(household_id, alexa_list_id);
+
+-- Deleting a Finta list forgets its pairing instead of deleting its items on Alexa.
+CREATE TRIGGER alexa_items_list_deleted AFTER DELETE ON shopping_lists
+BEGIN
+  DELETE FROM alexa_items WHERE finta_list_id = OLD.id;
+END;

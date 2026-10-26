@@ -15,6 +15,7 @@ import { homeRoutes } from './routes/home.js';
 import { bankAccountRoutes } from './routes/accounts.js';
 import { debtRoutes } from './routes/debts.js';
 import { alexaRoutes } from './routes/alexa.js';
+import { advisorRoutes } from './routes/advisor.js';
 import { createAlexaRunner } from './lib/alexa/runner.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -47,6 +48,7 @@ export function createApp({ cfg, db, setupCode, alexa, clock }) {
   bankAccountRoutes(router);
   debtRoutes(router);
   alexaRoutes(router, app);
+  advisorRoutes(router);
 
   const apiLimiter = new RateLimiter({ windowMs: 60000, max: 600 });
   const headers = securityHeaders(cfg);

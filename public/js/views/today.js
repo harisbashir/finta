@@ -41,6 +41,9 @@ function render(v, t, reload) {
   v.el.innerHTML = String(html`
     <div class="large-title"><h1>${greeting()}, ${S.user.name}</h1><p>${fmtLong(t.today)}</p></div>
 
+    ${t.cashWarning ? html`<a class="banner" href="#/money/advisor"><span class="tile" data-color="${t.cashWarning.level === 'danger' ? 'red' : 'orange'}">${icon('circle-alert')}</span>
+      <span class="body"><span class="title">${t.cashWarning.level === 'danger' ? `Chequing may go below $0 ${relPhrase(t.cashWarning.date)}` : `Chequing gets low ${relPhrase(t.cashWarning.date)}`}</span>
+      <span class="sub">Lowest about ${money(t.cashWarning.low.balance)} on ${fmtDate(t.cashWarning.low.date, { month: 'short', day: 'numeric' })}. See the cash-flow forecast.</span></span>${icon('chevron-right', 'chev')}</a>` : ''}
     ${monthCard(t.month)}
     ${t.needsReview ? html`<a class="banner" href="#/money/review"><span class="tile" data-color="blue">${icon('tag')}</span>
       <span class="body"><span class="title">${plural(t.needsReview, 'transaction')} to sort</span><span class="sub">From your last statement import. One tap each.</span></span>${icon('chevron-right', 'chev')}</a>` : ''}

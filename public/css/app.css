@@ -874,3 +874,7 @@ button.banner { width: 100%; text-align: left; font: inherit; }
 .slider-row { flex-wrap: wrap; }
 .slider-row input[type=range] { min-width: 140px; }
 .segmented button { min-width: 0; }
+
+/* Advisor */
+.room-input { width: 7.5em; text-align: right; font: inherit; color: var(--label); background: var(--fill-3, transparent); border: 1px solid var(--separator); border-radius: 8px; padding: 4px 8px; }
+.em-value { min-width: 2ch; text-align: center; font-variant-numeric: tabular-nums; }

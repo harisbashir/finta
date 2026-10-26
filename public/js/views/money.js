@@ -6,7 +6,7 @@ import { columns, barList, stack, SERIES_CLASSES } from '../charts.js';
 import { getMembers, getCategories } from '../store.js';
 
 const PAGES = {
-  accounts: 'Accounts', review: 'Review', bills: 'Bills & Income', spending: 'Spending', debts: 'Debts', goals: 'Goals',
+  accounts: 'Accounts', review: 'Review', bills: 'Bills & Income', spending: 'Spending', debts: 'Debts', goals: 'Goals', advisor: 'Advisor',
 };
 
 // "Household" or "Just Me": remembered on this device only (a viewing preference).
@@ -41,6 +41,7 @@ export async function mount(v) {
   if (page === 'accounts') return (await import('./accounts.js')).mountAccounts(v);
   if (page === 'review') return (await import('./accounts.js')).mountReview(v);
   if (page === 'debts') return (await import('./debts.js')).mountDebts(v);
+  if (page === 'advisor') return (await import('./advisor.js')).mountAdvisor(v);
   v.el.innerHTML = String(html`<div class="large-title"><h1>${PAGES[page]}</h1></div><div id="money-body"></div>`);
   const body = $('#money-body', v.el);
   await ({ bills, spending, goals })[page](v, body);
@@ -61,7 +62,7 @@ const shortMonth = (ym) => fmtDate(ym + '-01', { month: 'short' });
 // ─────────── Overview ───────────
 async function overview(v) {
   let ym = S.today.slice(0, 7);
-  let m, ins, accounts, debts;
+  let m, ins, accounts, debts, advisor;
   const sw = await scopeSwitch(() => load());
   v.setToolbar(html`<button class="bar-btn" data-import>${icon('download')}<span>Import</span></button><button class="bar-btn icon-only" data-add aria-label="Add expense">${icon('plus')}</button>`, {
     '[data-add]': () => expenseSheet({ onSaved: load }),
@@ -70,9 +71,10 @@ async function overview(v) {
 
   async function load() {
     const scope = getScope();
-    [m, ins, accounts, debts] = await Promise.all([
+    [m, ins, accounts, debts, advisor] = await Promise.all([
       api.get(`/api/money/summary?month=${ym}&scope=${scope}`), api.get(`/api/money/insights?month=${ym}&scope=${scope}`),
       api.get('/api/accounts'), api.get(`/api/debts?scope=${scope}`),
+      api.get(`/api/advisor?scope=${scope}`).catch(() => null),
     ]);
     if (!v.alive()) return;
     S.today = m.today;
@@ -133,6 +135,7 @@ async function overview(v) {
               ${navRow('#/money/spending', 'receipt', 'orange', 'Spending', `${money(m.spent, { short: true })} this month`)}
               ${navRow('#/money/debts', 'credit-card', 'brown', 'Debts', debts.total ? `${money(debts.total, { short: true })} owed` : 'Nothing owed')}
               ${navRow('#/money/goals', 'piggy-bank', 'teal', 'Goals', m.saved ? `${money(m.saved, { short: true })} set aside this month` : 'Save for something')}
+              ${navRow('#/money/advisor', 'trending-up', 'green', 'Advisor', advisorSummary(advisor))}
             </div>
           </section>
           <section class="section">
@@ -392,4 +395,12 @@ async function goals(v, body) {
     if (ed) goalSheet({ goal: byId(ed.dataset.edit), onSaved: load });
   };
   await load();
+}
+
+/** "2 things to look at" from the health check, or a calmer line. */
+function advisorSummary(a) {
+  if (!a) return 'Health check, cash flow, fees, taxes';
+  const n = a.health.metrics.filter((m) => m.status === 'poor' || m.status === 'fair').length;
+  if (a.forecast.warning?.level === 'danger') return 'Chequing may go below $0 soon';
+  return n ? `${n} ${n === 1 ? 'thing' : 'things'} to look at` : a.health.metrics.every((m) => m.status === 'unknown') ? 'Health check, cash flow, fees, taxes' : 'Looking good';
 }

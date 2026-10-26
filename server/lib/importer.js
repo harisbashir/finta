@@ -40,7 +40,7 @@ export function matchRule(ctx, merchant, kind = null) {
   return ctx.rules.find((r) => (!kind || r.kind === kind) && r.kind !== 'ignore_recurring' && merchant.includes(r.pattern)) || null;
 }
 
-const tokens = (s) => norm(s).split(/[^A-Z0-9&]+/).filter((w) => w.length >= 4 && !['PAYMENT', 'BILL', 'MONTHLY', 'CANADA', 'THE'].includes(w));
+export const tokens = (s) => norm(s).split(/[^A-Z0-9&]+/).filter((w) => w.length >= 4 && !['PAYMENT', 'BILL', 'MONTHLY', 'CANADA', 'THE'].includes(w));
 
 /** A recurring item this row probably pays: shared name word, similar amount, near a due date. */
 function guessRecurring(ctx, row, merchant) {

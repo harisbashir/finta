@@ -40,7 +40,7 @@ function sniffDelimiter(s) {
 export function parseAmount(raw) {
   if (raw == null) return null;
   let s = String(raw).trim();
-  if (!s) return null;
+  if (!s || s.includes('*')) return null;   // masked card numbers ("4500********9362") aren't amounts
   let neg = false;
   if (/^\(.*\)$/.test(s)) { neg = true; s = s.slice(1, -1); }
   if (/\b(DR|DB|D)$/i.test(s)) { neg = true; s = s.replace(/\s*(DR|DB|D)$/i, ''); }

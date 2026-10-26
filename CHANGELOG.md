@@ -1,6 +1,19 @@
 # Changelog
 
-## 1.2.0 — 2026-10-26
+## 1.2.1 — 2026-10-26
+
+### Fixed
+- **CIBC card statements no longer get a huge balance.** The masked card number in CIBC's card exports (`4500********1234`) was read as a balance column.
+- **CIBC deposits and debits are told apart.** "Electronic Funds Transfer PAY …", "… DEPOSIT AE/EI" and "… PREAUTHORIZED DEBIT NSLSC" all had the same payee, so sorting one sorted them all. Finta now reads the payee after CIBC's label, and "PAY" deposits count as Salary.
+- Store numbers glued to names ("PETRO CANADA12345"), GTA town names and foreign-currency tails ("12.00 GBP @ 1.800000") no longer split one shop into many.
+- "New Market" in an address no longer makes a shop a grocery store, and Costco Gas is Transport.
+
+### Improved
+- **More banks:** RBC ("WWW PAYMENT - …"), TD (" … BPY" bill payments), BMO ("PAY BILL …"), Tangerine ("EFT Withdrawal to …", "Pre-Authorized Payment - …"), "Direct deposit from …", and French wording from Desjardins and National Bank ("Paiement facture - AccèsD Internet /…", "PAIEMENT PRÉAUTORISÉ", "DÉPÔT DIRECT", "VIREMENT", "FRAIS", "INTÉRÊTS").
+- **More billers:** phone and internet (SaskTel, Distributel, Start.ca, Carry Telecom, Bell MTS), power and gas across Canada (SaskPower, SaskEnergy, NB Power, Nova Scotia Power, FortisBC, Newmarket-Tay Power, Veridian, Enersource, Entegrus, any "… Utilities"), insurers (Equitable Life, iA, Empire Life, Allianz, Blue Cross, Green Shield, Pembridge, ICBC, SGI, Onlia, Square One, CAA, "Assurance …"), and 407 ETR, SAAQ and plate renewals.
+- Finta recognizes more shops: convenience stores (Mac's, 7-Eleven), HelloFresh, Winners/HomeSense, Moores, Coles, Canada Computers, Levi's, Chick-fil-A, burger and pizza places, PartSource, parking (Impark, Precise ParkLink, Toronto Parking Authority) and NYC transit, Sport Clips, nail salons, FYidoctors, chemists, labs, and NSF charges.
+
+
 
 ### New
 - **Alexa list sync.** Connect your Amazon account in **Settings → Alexa** (owners only). Sign in with your Amazon email and password, then enter the code Amazon texts you.

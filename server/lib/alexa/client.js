@@ -132,6 +132,10 @@ export function createAlexaClient({ fetch = globalThis.fetch, hosts = DEFAULT_HO
     return navigate(action, { method: (form.attrs.method || 'POST').toUpperCase(), body, jar, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }, stopAt);
   }
 
+  // Sign-in ends with a redirect to /ap/maplanding carrying the code; read it there, don't follow it.
+  const hasCode = (loc) => loc.searchParams.has('openid.oa2.authorization_code');
+  const codeOf = (res) => res.stoppedAt?.searchParams.get('openid.oa2.authorization_code') || null;
+
   function failOnError(page) {
     const msg = errorMessage(page.html);
     if (msg) throw new AlexaError('auth', msg);
@@ -162,16 +166,22 @@ export function createAlexaClient({ fetch = globalThis.fetch, hosts = DEFAULT_HO
       'openid.oa2.response_type': 'code',
     });
     const jar = initCookies();
-    let page = await navigate(`${hosts.signin}/ap/signin?${q}`, { jar });
+    const base = { jar, verifier, serial, createdAt: now() };
+    // Amazon sometimes trusts the sign-in and skips the code step: then the code arrives early.
+    const early = (res) => (codeOf(res) ? { ...base, needsCode: false, code: codeOf(res) } : null);
+    let page = await navigate(`${hosts.signin}/ap/signin?${q}`, { jar }, hasCode);
+    if (early(page)) return early(page);
     // Email and password are asked on separate pages.
     for (const [field, value] of [['email', email], ['password', password]]) {
       if (!hasInput(page.html, field)) break;
-      page = await submit(page, pickForm(page.html, { needs: field }), { [field]: value }, jar);
+      page = await submit(page, pickForm(page.html, { needs: field }), { [field]: value }, jar, hasCode);
+      if (early(page)) return early(page);
       failOnError(page);
     }
     // Accounts with several two-step options first ask where to send the code.
     if (hasId(page.html, 'auth-select-device-form')) {
-      page = await submit(page, pickForm(page.html, { id: 'auth-select-device-form' }), {}, jar);
+      page = await submit(page, pickForm(page.html, { id: 'auth-select-device-form' }), {}, jar, hasCode);
+      if (early(page)) return early(page);
       failOnError(page);
     }
     if (hasId(page.html, 'cvf-aamation-challenge-form') || !hasId(page.html, 'auth-mfa-otpcode')) {
@@ -181,7 +191,7 @@ export function createAlexaClient({ fetch = globalThis.fetch, hosts = DEFAULT_HO
       throw err;
     }
     const form = pickForm(page.html, { needs: 'otpCode' });
-    return { jar, url: page.url, form, verifier, serial, createdAt: now() };
+    return { ...base, needsCode: true, url: page.url, form };
   }
 
   async function register(code, pending) {
@@ -224,16 +234,18 @@ export function createAlexaClient({ fetch = globalThis.fetch, hosts = DEFAULT_HO
   }
 
   async function finishLogin(pending, code) {
-    const page = { url: pending.url };
-    const result = await submit(page, pending.form, { otpCode: String(code), mfaSubmit: 'Submit', rememberDevice: 'false' }, pending.jar,
-      (loc) => loc.searchParams.has('openid.oa2.authorization_code'));
-    if (!result.stoppedAt) {
-      failOnError(result);
-      const err = new AlexaError('challenge', 'Amazon didn’t accept the sign-in. Start again and use the newest code.');
-      err.diag = describe(result);
-      throw err;
+    let authCode = pending.code;
+    if (!authCode) {
+      const result = await submit({ url: pending.url }, pending.form, { otpCode: String(code), mfaSubmit: 'Submit', rememberDevice: 'false' }, pending.jar, hasCode);
+      authCode = codeOf(result);
+      if (!authCode) {
+        failOnError(result);
+        const err = new AlexaError('challenge', 'Amazon didn’t accept the sign-in. Start again and use the newest code.');
+        err.diag = describe(result);
+        throw err;
+      }
     }
-    const login = await register(result.stoppedAt.searchParams.get('openid.oa2.authorization_code'), pending);
+    const login = await register(authCode, pending);
     // Find which Amazon site holds this account's Alexa lists, then get cookies for it (the library
     // always does this outside amazon.com).
     const res = await send(`${hosts.alexa}/api/welcome`, { jar: { ...login.cookies } });

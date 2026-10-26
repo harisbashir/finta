@@ -9,7 +9,7 @@ let clock = Date.now();
 const fakeClient = {
   async startLogin({ password }) {
     if (password === 'wrong') throw new AlexaError('auth', 'Your password is incorrect');
-    return { pending: true };
+    return { needsCode: password !== 'trusted' };
   },
   async finishLogin(_p, code) {
     if (code === '000000') throw new AlexaError('auth', 'The code you entered is not valid');
@@ -136,6 +136,14 @@ test('disconnect removes the link and snapshots', async () => {
   assert.equal(srv.db.prepare('SELECT COUNT(*) AS n FROM alexa_links').get().n, 0);
   assert.equal(srv.db.prepare('SELECT COUNT(*) AS n FROM alexa_items').get().n, 0);
   assert.ok(srv.db.prepare(`SELECT 1 FROM audit_log WHERE event = 'alexa.disconnected'`).get());
+});
+
+test('connect finishes at once when Amazon skips the code', async () => {
+  srv.db.prepare('DELETE FROM alexa_links').run();
+  const r = await owner.post('/api/alexa/connect', { email: 'me@example.com', password: 'trusted' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal(r.data.connected, true);
+  assert.equal(r.data.needsCode, undefined);
 });
 
 test('sixth connect attempt in 15 minutes is rate limited', async () => {

@@ -479,8 +479,10 @@ function connectSheet(done) {
       </div>
       <p class="hint">Finta uses your password once to sign in and doesn’t store it.</p></form>`,
     onSubmit: async (v) => {
-      await api.post('/api/alexa/connect', { email: v.email, password: v.password });
-      setTimeout(() => codeSheet(done), 250);
+      const r = await api.post('/api/alexa/connect', { email: v.email, password: v.password });
+      if (r.needsCode) { setTimeout(() => codeSheet(done), 250); return; }
+      toast('Alexa connected. The first sync is running.');
+      done();
     },
   });
 }

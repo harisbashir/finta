@@ -36,6 +36,7 @@ before(async () => {
     if (p === '/ap/signin-password') {
       if (f.password === 'bad') return html(PAGES.error);
       if (f.password === 'captcha') return html(PAGES.captcha);
+      if (f.password === 'trusted') { res.writeHead(302, { Location: '/ap/maplanding?openid.oa2.authorization_code=AUTHCODE' }); return res.end(); }
       return html(state.chooseFirst ? PAGES.choose : PAGES.otp);
     }
     if (p === '/ap/choose') return html(PAGES.otp);
@@ -223,4 +224,19 @@ test('sign-in always starts on amazon.com, like the Alexa app; the lists site co
   const reg = JSON.parse(log.find((r) => r.path === '/auth/register').body);
   assert.equal(reg.cookies.domain, '.amazon.com');
   assert.equal(login.domain, 'amazon.ca', 'from alexaHostName');
+});
+
+test('when Amazon skips the code step, sign-in finishes without one', async () => {
+  const c = newClient();
+  const pending = await c.startLogin({ email: 'me@example.com', password: 'trusted' });
+  assert.equal(pending.needsCode, false);
+  const login = await c.finishLogin(pending);
+  assert.equal(login.refreshToken, 'RT');
+  assert.ok(!log.some((r) => r.path === '/ap/mfa'));
+  assert.ok(!log.some((r) => r.path === '/ap/maplanding'), 'the redirect is read, not followed');
+});
+
+test('a normal sign-in says a code is needed', async () => {
+  const pending = await newClient().startLogin({ email: 'me@example.com', password: 'right' });
+  assert.equal(pending.needsCode, true);
 });

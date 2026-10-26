@@ -38,19 +38,13 @@ export function alexaRoutes(r, app) {
     limiter.take(`alexa:${ctx.household.id}`);
     const client = app.alexa.makeClient();
     const state = await amazon(() => client.startLogin({ email: v.email, password: v.password }));
+    // Amazon sometimes trusts the sign-in and skips the texted code.
+    if (!state.needsCode) return complete(ctx, { client, state, email: v.email });
     pending.set(ctx.household.id, { client, state, email: v.email, at: now() });
     return { needsCode: true };
   });
 
-  r.post('/api/alexa/code', async (ctx) => {
-    requireOwner(ctx);
-    const code = String(ctx.body.code ?? '').replace(/\s/g, '');
-    if (!/^\d{4,8}$/.test(code)) throw bad('Enter the code Amazon texted you.', { field: 'code' });
-    const p = pending.get(ctx.household.id);
-    if (!p || now() - p.at > PENDING_MS) {
-      pending.delete(ctx.household.id);
-      throw bad('The Amazon sign-in expired. Start again.');
-    }
+  async function complete(ctx, p, code) {
     const login = await amazon(() => p.client.finishLogin(p.state, code));
     pending.delete(ctx.household.id);
     limiter.reset(`alexa:${ctx.household.id}`);
@@ -61,6 +55,18 @@ export function alexaRoutes(r, app) {
     audit(ctx, 'alexa.connected', p.email);
     app.alexa.syncNow(ctx.household.id)?.catch?.(() => {});
     return status(ctx);
+  }
+
+  r.post('/api/alexa/code', async (ctx) => {
+    requireOwner(ctx);
+    const code = String(ctx.body.code ?? '').replace(/\s/g, '');
+    if (!/^\d{4,8}$/.test(code)) throw bad('Enter the code Amazon texted you.', { field: 'code' });
+    const p = pending.get(ctx.household.id);
+    if (!p || now() - p.at > PENDING_MS) {
+      pending.delete(ctx.household.id);
+      throw bad('The Amazon sign-in expired. Start again.');
+    }
+    return complete(ctx, p, code);
   });
 
   r.post('/api/alexa/sync', (ctx) => {

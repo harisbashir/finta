@@ -23,7 +23,7 @@ function fakeAlexa() {
       if (gate) await gate;
       if (fail.getItemsOnce?.[id]?.length) throw fail.getItemsOnce[id].shift();
       if (fail.emptyOnce?.[id]) { fail.emptyOnce[id]--; return []; }
-      return find(id).items.slice(0, 200).map((i) => ({ ...i }));
+      return find(id).items.slice(0, 100).map((i) => ({ ...i }));
     },
     async addItem(id, name) { calls.push('add'); if (fail.add) throw fail.add; find(id).items.push({ itemId: `n${++n}`, name, checked: false, version: 1 }); },
     async updateItem(id, itemId, version, { name, checked }) {
@@ -205,14 +205,14 @@ test('a long custom list name maps to one Finta list across runs', async () => {
   assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM shopping_items WHERE name = 'screws'`).get().n, 1);
 });
 
-test('a list at the 200-item limit is left alone and reported', async () => {
-  for (let i = 0; i < 205; i++) fake.shop().push({ itemId: `x${i}`, name: `thing ${i}`, checked: true, version: 1 });
+test('a list at the 100-item limit is left alone and reported', async () => {
+  for (let i = 0; i < 105; i++) fake.shop().push({ itemId: `x${i}`, name: `thing ${i}`, checked: true, version: 1 });
   addFinta('eggs');
   await runner.syncNow(hid);
   await runner.syncNow(hid);
   assert.equal(fake.calls.filter((c) => c === 'add').length, 0);
   assert.deepEqual(items(), [{ name: 'eggs', checked: 0 }]);
-  assert.match(link().last_error, /200/);
+  assert.match(link().last_error, /100/);
 });
 
 test('only open and recently done tasks sync', async () => {

@@ -16,6 +16,7 @@ const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 const TIMEOUT_MS = 20000;
 const COOKIE_MAX_AGE_MS = 12 * 3600e3;
 const LISTS_PATH = '/alexashoppinglists/api/v2/lists';
+export const ITEMS_PAGE = 100;
 
 // Like the Alexa app, sign-in always happens on amazon.com, whatever the country; the account's own
 // lists site (amazon.ca for Canada) is then read from alexa.amazon.com/api/welcome.
@@ -301,7 +302,8 @@ export function createAlexaClient({ fetch = globalThis.fetch, hosts = DEFAULT_HO
         return json.listInfoList.map((l) => ({ id: l.listId, type: l.listType, name: l.listName ?? null }));
       },
       async getItems(listId) {
-        const json = await call('POST', `${encodeURIComponent(listId)}/items/fetch`, { query: { limit: 200 } });
+        // Amazon accepts page sizes below 200 ("maxResults should be in range: from 0 to 200"); 100 as in the library.
+        const json = await call('POST', `${encodeURIComponent(listId)}/items/fetch`, { query: { limit: ITEMS_PAGE } });
         if (!Array.isArray(json.itemInfoList)) throw new AlexaError('api', 'Alexa sent list items in an unexpected format.');
         return json.itemInfoList.map((i) => ({ itemId: i.itemId, name: i.itemName ?? '', checked: i.itemStatus === 'COMPLETE', version: i.version }));
       },

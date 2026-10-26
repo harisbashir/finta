@@ -137,7 +137,7 @@ test('lists and items are normalized', async () => {
   assert.deepEqual(await s.getItems('L-shop'), [
     { itemId: 'i1', name: 'milk', checked: false, version: 3 }, { itemId: 'i2', name: 'eggs', checked: true, version: 1 },
   ]);
-  assert.equal(log.at(-1).query.get('limit'), '200');
+  assert.equal(log.at(-1).query.get('limit'), '100', 'Amazon refuses 200: "maxResults should be in range: from 0 to 200"');
 });
 
 test('cookie header and csrf are sent', async () => {

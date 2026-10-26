@@ -1,13 +1,13 @@
 // Runs Alexa list sync: every 10 minutes, when Lists or Tasks is opened, and shortly after a
 // change in Finta. One run at a time per household; a failure is recorded, never thrown.
-import { createAlexaClient } from './client.js';
+import { createAlexaClient, ITEMS_PAGE } from './client.js';
 import { plan, sameName } from './sync.js';
 import { tx } from '../../db.js';
 import { today } from '../dates.js';
 import { completeTask } from '../tasks.js';
 
 const VIEW_MIN_MS = 60000;
-const ITEM_LIMIT = 200;   // what one fetch returns; past this, sync can't see the whole list
+const ITEM_LIMIT = ITEMS_PAGE;   // what one fetch returns; past this, sync can't see the whole list
 const NAME_MAX = { item: 80, task: 120 };
 const LIST_NAME_MAX = 40;
 

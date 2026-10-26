@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { loadConfig } from './config.js';
 import { openDatabase } from './db.js';
 import { createApp } from './app.js';
+import { createAlexaRunner } from './lib/alexa/runner.js';
 
 const cfg = loadConfig();
 const db = openDatabase(path.join(cfg.dataDir, 'finta.db'));
@@ -20,17 +21,20 @@ if (!db.prepare('SELECT 1 FROM users LIMIT 1').get()) {
   console.log('└──────────────────────────────────────────────┘\n');
 }
 
-const server = http.createServer(createApp({ cfg, db, setupCode }));
+const alexa = createAlexaRunner({ db });
+const server = http.createServer(createApp({ cfg, db, setupCode, alexa }));
 server.headersTimeout = 20000;
 server.requestTimeout = 30000;
 server.keepAliveTimeout = 5000;
 
 server.listen(cfg.port, cfg.host, () => {
   console.log(`Finta listening on ${cfg.host}:${cfg.port} (${cfg.production ? 'production' : 'development'})`);
+  alexa.start();
 });
 
 function shutdown(signal) {
   console.log(`${signal} received, closing…`);
+  alexa.stop();
   server.close(() => {
     try { db.close(); } catch { /* already closed */ }
     process.exit(0);

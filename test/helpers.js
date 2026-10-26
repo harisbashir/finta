@@ -4,13 +4,13 @@ import { loadConfig } from '../server/config.js';
 import { openDatabase } from '../server/db.js';
 import { createApp } from '../server/app.js';
 
-export async function startServer(env = {}) {
+export async function startServer(env = {}, extra = {}) {
   const db = openDatabase(':memory:');
   const server = http.createServer();
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const port = server.address().port;
   const cfg = loadConfig({ APP_URL: `http://localhost:${port}`, LOG_REQUESTS: 'false', LOGIN_RATE_LIMIT: '1000', ...env });
-  server.on('request', createApp({ cfg, db, setupCode: 'TESTCODE' }));
+  server.on('request', createApp({ cfg, db, setupCode: 'TESTCODE', ...extra }));
   const base = `http://127.0.0.1:${port}`;
   return { db, cfg, base, close: () => new Promise((r) => server.close(r)) };
 }

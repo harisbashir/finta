@@ -3,6 +3,7 @@ import { api } from '../api.js';
 import { html, icon, $, $$, S, money, relPhrase, fmtLong, relDay, fmtDate, toast, emptyState, hydrate, enableSwipe, plural } from '../ui.js';
 import { monthCard, expenseSheet, recurringSheet, recurringDetail, markPaid, KINDS } from './money-sheets.js';
 import { taskRow, taskSheet, completeTask, deleteTask } from './tasks.js';
+import { reminderSection } from '../alexa.js';
 import { addItemsSheet } from './lists.js';
 
 export async function mount(v) {
@@ -70,6 +71,7 @@ function render(v, t, reload) {
             ${overdueTasks.length ? html`<p class="section-foot">${plural(overdueTasks.length, 'task')} overdue.</p>` : ''}`
             : html`<div class="group">${emptyState('sparkles', 'All clear', 'Nothing due today or tomorrow.')}</div>`}
         </section>
+        ${reminderSection(t.reminders)}
       </div>
 
       <div>

@@ -14,9 +14,14 @@ import { moneyRoutes } from './routes/money.js';
 import { homeRoutes } from './routes/home.js';
 import { bankAccountRoutes } from './routes/accounts.js';
 import { debtRoutes } from './routes/debts.js';
+import { alexaRoutes } from './routes/alexa.js';
+import { createAlexaRunner } from './lib/alexa/runner.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(here, '..', 'public');
+
+// Writes here change lists or tasks, so Alexa sync should pick them up.
+const ALEXA_WRITES = /^\/api\/(tasks|items|lists)(\/|$)|^\/api\/meals\/\d+\/to-list$/;
 
 const PUBLIC_API = [
   ['GET', /^\/api\/bootstrap$/], ['POST', /^\/api\/setup$/], ['POST', /^\/api\/signup$/],
@@ -31,8 +36,8 @@ const MIME = {
   '.json': 'application/json', '.txt': 'text/plain; charset=utf-8', '.woff2': 'font/woff2',
 };
 
-export function createApp({ cfg, db, setupCode }) {
-  const app = { setupCode: setupCode || '', cfg };
+export function createApp({ cfg, db, setupCode, alexa, clock }) {
+  const app = { setupCode: setupCode || '', cfg, clock, alexa: alexa || createAlexaRunner({ db }) };
   const router = new Router();
   authRoutes(router, app);
   accountRoutes(router, app);
@@ -41,6 +46,7 @@ export function createApp({ cfg, db, setupCode }) {
   homeRoutes(router);
   bankAccountRoutes(router);
   debtRoutes(router);
+  alexaRoutes(router, app);
 
   const apiLimiter = new RateLimiter({ windowMs: 60000, max: 600 });
   const headers = securityHeaders(cfg);
@@ -100,6 +106,7 @@ export function createApp({ cfg, db, setupCode }) {
       ctx.body = await readJson(req, /\/import(\/preview)?$/.test(pathname) ? 8 * 1024 * 1024 : undefined);
       let result;
       for (const h of match.handlers) result = await h(ctx);
+      if (req.method !== 'GET' && ALEXA_WRITES.test(pathname)) app.alexa.requestSync(ctx.household.id, { reason: 'change' });
       if (result && result.$raw !== undefined) send(res, 200, result.$raw, result.headers);
       else send(res, 200, result ?? { ok: true });
     } catch (err) {

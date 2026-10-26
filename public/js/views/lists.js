@@ -2,6 +2,7 @@
 import { api } from '../api.js';
 import { html, icon, $, $$, S, sheet, toast, confirmDialog, fText, fSelect, fDate, fTextarea, segmented, emptyState, enableSwipe, addDays, fmtDate, plural } from '../ui.js';
 import { getLists, invalidate } from '../store.js';
+import { alexaSync } from '../alexa.js';
 
 export async function mount(v) {
   const tab = v.params[0] === 'meals' ? 'meals' : 'shopping';
@@ -23,10 +24,13 @@ async function shopping(v, body, wantedId) {
     '[data-new-list]': () => listSheet({ onSaved: async (l) => { lists = await getLists(true); current = lists.find((x) => x.id === l.id) || current; await load(); } }),
   });
 
+  let loaded = false;
+  const alexaLine = alexaSync(v, { rerender: () => { if (loaded) render(); }, reload: async () => { lists = await getLists(true); current = lists.find((l) => l.id === current?.id) || lists[0]; await load(); } });
   const load = async () => {
     if (!current) { render(); return; }
     items = await api.get(`/api/lists/${current.id}/items`);
     if (!v.alive()) return;
+    loaded = true;
     render();
   };
 
@@ -51,7 +55,8 @@ async function shopping(v, body, wantedId) {
       </section>
       ${got.length ? html`<section class="section">
         <div class="section-head"><span class="caps">In the Cart · ${got.length}</span><button class="link" data-clear>Clear</button></div>
-        <div class="group">${got.map(itemRow)}</div></section>` : ''}`);
+        <div class="group">${got.map(itemRow)}</div></section>` : ''}
+      ${alexaLine()}`);
 
     const input = $('[data-add-item] input', body);
     $('[data-add-item]', body).addEventListener('submit', async (e) => {

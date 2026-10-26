@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.2.0 — 2026-10-26
+
+### New
+- **Alexa list sync.** Connect your Amazon account in **Settings → Alexa** (owners only). Sign in with your Amazon email and password, then enter the code Amazon texts you.
+  - Alexa’s **Shopping List** syncs both ways with a Finta list you choose.
+  - Alexa’s **To-do list** syncs both ways with **Tasks**. A repeating task ticked on Alexa moves to its next date and comes back unticked.
+  - Your other Alexa lists sync with the Finta list of the same name, which is created if it doesn’t exist.
+  - Changes in Finta reach Alexa within seconds. Finta checks Alexa every 10 minutes, and whenever Lists or Tasks is opened.
+  - Lists and Tasks show when they last synced, and Settings shows any sync error.
+  - **Alexa reminders** show on Tasks and Today with their time and whether they repeat (read-only; change or dismiss them with Alexa).
+  - This uses Amazon’s private API, not an official one. Amazon can change it at any time. See Security in the README.
+
+### Changed
+- Completing a task now goes through one shared function, so the Tasks screen and Alexa sync behave the same.
+
 ## 1.1.2 — 2026-09-28
 
 ### Fixed

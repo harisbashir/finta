@@ -2,10 +2,12 @@
 import { bad } from '../lib/http.js';
 import { validate, t } from '../lib/validate.js';
 import { crud, getOwned, insertRow } from '../lib/crud.js';
-import { nextTaskDate, addDays, monthRange } from '../lib/dates.js';
+import { addDays, monthRange } from '../lib/dates.js';
+import { completeTask } from '../lib/tasks.js';
 import { materializeAutopay, monthSummary, upcomingBills, netWorth } from '../lib/finance.js';
 import { reviewCount } from './money.js';
 import { tx } from '../db.js';
+import { upcomingReminders } from './alexa.js';
 
 const REPEATS = ['none', 'daily', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly'];
 
@@ -33,14 +35,7 @@ export function homeRoutes(r) {
 
   r.post('/api/tasks/:id/complete', (ctx) => {
     const task = getOwned(ctx.db, 'tasks', ctx.params.id, ctx.household.id);
-    if (task.repeat !== 'none') {
-      // Repeating tasks roll forward instead of disappearing.
-      const next = nextTaskDate(task.repeat, task.due_date, today(ctx));
-      ctx.db.prepare(`UPDATE tasks SET due_date = ?, last_done_at = datetime('now') WHERE id = ?`).run(next, task.id);
-      return { ...ctx.db.prepare('SELECT * FROM tasks WHERE id = ?').get(task.id), rolled: true, previous_due: task.due_date };
-    }
-    ctx.db.prepare(`UPDATE tasks SET done_at = datetime('now'), last_done_at = datetime('now') WHERE id = ?`).run(task.id);
-    return ctx.db.prepare('SELECT * FROM tasks WHERE id = ?').get(task.id);
+    return completeTask(ctx.db, task, today(ctx));
   });
 
   r.post('/api/tasks/:id/reopen', (ctx) => {
@@ -173,6 +168,7 @@ export function homeRoutes(r) {
     return {
       today: d, month: { ...summary, schedule: undefined, start, end },
       bills, tasks, meals, lists, warranties, trials,
+      reminders: upcomingReminders(ctx.db, hid, { withinMs: 48 * 3600e3 }),
       needsReview: reviewCount(ctx),
       netWorth: netWorth(ctx.db, hid, 'household', ctx.user.id),
     };

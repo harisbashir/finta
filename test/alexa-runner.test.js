@@ -267,3 +267,14 @@ test('requestSync now runs even right after a sync', async () => {
   await tick();
   assert.ok(fake.calls.length > before);
 });
+
+test('a custom Alexa list named like the Shopping List pairing gets its own "(Alexa)" list', async () => {
+  fake.lists.push({ id: 'C', type: 'CUSTOM', name: 'groceries', items: [{ itemId: 'c1', name: 'flour', checked: false, version: 1 }] });
+  fake.shop().push({ itemId: 'a', name: 'milk', checked: false, version: 1 });
+  for (let i = 0; i < 2; i++) await runner.syncNow(hid);
+  const own = db.prepare(`SELECT id FROM shopping_lists WHERE name = 'groceries (Alexa)'`).get();
+  assert.ok(own);
+  assert.deepEqual(items(own.id), [{ name: 'flour', checked: 0 }]);
+  assert.deepEqual(items(), [{ name: 'milk', checked: 0 }]);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM shopping_lists').get().n, 2);
+});

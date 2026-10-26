@@ -99,10 +99,14 @@ export function createAlexaRunner({ db, makeClient = () => createAlexaClient(), 
       }
     }
     for (const list of lists) {
-      const name = String(list.name || '').trim().slice(0, LIST_NAME_MAX).trim();
+      let name = String(list.name || '').trim().slice(0, LIST_NAME_MAX).trim();
       if (list.type !== 'CUSTOM' || !name) continue;
-      const match = fintaLists().find((l) => sameName(l.name, name));
-      if (match && match.id === shopId) continue;
+      let match = fintaLists().find((l) => sameName(l.name, name));
+      // That Finta list already syncs with Alexa's Shopping List, so this one gets its own.
+      if (match && match.id === shopId) {
+        name = `${name.slice(0, LIST_NAME_MAX - 8).trim()} (Alexa)`;
+        match = fintaLists().find((l) => sameName(l.name, name));
+      }
       pairings.push({ list, kind: 'item', fintaListId: match?.id ?? createList(name) });
     }
     return pairings;

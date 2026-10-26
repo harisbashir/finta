@@ -145,6 +145,7 @@ Try it with the files in [`docs/examples/`](docs/examples).
 | **Members** | Household → members. Accounts, bills, goals and debts belong to a person or are joint. Switch Money between the household and *Just Me*. Private accounts show others the balance but not the transactions |
 | **Tasks** | Quick add, sections (Overdue, Today, Tomorrow, Next 7 Days…), chores, maintenance, errands and admin, assignees, and repeating tasks that roll forward when you tick them |
 | **Lists** | Several shared shopping lists, add many items at once (“milk, eggs, bread”), no duplicates, clear what you’ve bought. Weekly meal plan with ingredients you can send to a list |
+| **Alexa** | Two-way sync with Alexa’s Shopping List, To-do list (as Tasks) and custom lists. “Alexa, add milk to my shopping list” shows up in Finta, and anything ticked in Finta is ticked on Alexa. Unofficial: see below |
 | **Home** | Things you own (room, model, serial number, price, warranty) and household contacts with tap-to-call |
 | **Settings** | Profile, household (currency, time zone), members and roles, categories and budgets, passkeys, two-factor, password, devices, activity log, data export, account deletion |
 
@@ -164,6 +165,7 @@ Finta is designed to face the internet. The highlights are below; [SECURITY.md](
 - **Headers:** a strict Content Security Policy (no inline scripts or styles), HSTS, `frame-ancestors 'none'` and `nosniff`.
 - **Isolation:** every query is scoped to your household, and references between rows are checked on write. Within a household, a member’s private accounts are enforced on the server: other members get balances and totals, never the rows.
 - **Container:** runs as a non-root user on a read-only root filesystem with all Linux capabilities dropped and `no-new-privileges`.
+- **Alexa (optional):** Amazon closed its public list API in 2024, so Finta signs in the way the Alexa app does, using the approach of the open-source [aioamazondevices](https://github.com/chemelli74/aioamazondevices) library that Home Assistant uses. Only owners can connect it. Your Amazon password is used once and never stored; the sign-in token Amazon issues is kept in the database (and so in backups), never sent to browsers and never included in Export Data. Amazon can change this private API at any time, and sync stops until Finta is updated. Disconnect in **Settings → Alexa**, or remove “Finta” from your Amazon account’s devices.
 
 ## Running it
 

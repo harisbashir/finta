@@ -1,7 +1,8 @@
 // Settings: profile, household & members, categories, sign-in & security, data.
 import { api, passkeysSupported, createPasskey } from '../api.js';
 import { html, raw, icon, $, $$, S, sheet, toast, confirmDialog, fText, fSelect, fToggle, fMoney, initials, emptyState, fmtDate, plural, applyTheme } from '../ui.js';
-import { getCategories, getMembers, invalidate } from '../store.js';
+import { getCategories, getMembers, getLists, invalidate } from '../store.js';
+import { ago } from '../alexa.js';
 import { COLORS_UI } from './palette.js';
 
 const CURRENCIES = ['CAD', 'USD', 'EUR', 'GBP', 'AUD', 'NZD', 'INR', 'PKR', 'AED', 'JPY', 'CHF', 'MXN'];
@@ -14,11 +15,12 @@ export async function mount(v) {
   if (sub === 'categories') return categories(v);
   if (sub === 'activity') return activity(v);
   if (sub === 'rules') return rules(v);
+  if (sub === 'alexa') return alexaPage(v);
   return main(v);
 }
 
 async function main(v) {
-  const members = await getMembers(true);
+  const [members, alexa] = await Promise.all([getMembers(true), api.get('/api/alexa').catch(() => ({ connected: false }))]);
   const owner = S.user.role === 'owner';
   const h = S.household;
   v.el.innerHTML = String(html`
@@ -55,6 +57,14 @@ async function main(v) {
         ${owner ? html`<button class="row center" data-invite>${icon('users')} Invite Someone</button>` : ''}
       </div>
       <p class="section-foot">Everyone shares the same money, tasks, lists and meals. Owners can change household settings and invite people.</p>
+    </section>
+
+    <section class="section">
+      <div class="section-head"><span class="caps">Connections</span></div>
+      <div class="group has-icons">
+        <a class="row" href="#/settings/alexa"><span class="tile" data-color="cyan">${icon('mic')}</span><span class="body"><span class="title">Alexa</span>
+          <span class="sub ${alexa.status === 'reconnect' ? 'text-neg' : ''}">${!alexa.connected ? 'Not connected' : alexa.status === 'reconnect' ? 'Reconnect needed' : alexa.lastSyncAt ? `Synced ${ago(alexa.lastSyncAt)}` : 'Connected'}</span></span>${icon('chevron-right', 'chev')}</a>
+      </div>
     </section>
 
     <section class="section">
@@ -370,7 +380,7 @@ async function activity(v) {
   const LABEL = {
     login: 'Signed in', 'login.failed': 'Wrong password', 'password.changed': 'Changed password', '2fa.enabled': 'Turned on two-factor',
     '2fa.disabled': 'Turned off two-factor', 'passkey.added': 'Added a passkey', 'passkey.removed': 'Removed a passkey', 'member.joined': 'Joined the household',
-    'member.removed': 'Removed a member', 'member.role': 'Changed a role', 'invite.created': 'Created an invitation', 'household.created': 'Created the household',
+    'member.removed': 'Removed a member', 'member.role': 'Changed a role', 'invite.created': 'Created an invitation', 'household.created': 'Created the household', 'alexa.connected': 'Connected Alexa', 'alexa.disconnected': 'Disconnected Alexa',
     'data.exported': 'Exported data', 'sessions.revoked': 'Signed out other devices', 'recovery_code.used': 'Used a recovery code', 'recovery_codes.regenerated': 'Made new recovery codes',
   };
   v.el.innerHTML = String(html`<div class="large-title"><h1>Activity</h1><p>The last 100 security events in your household.</p></div>
@@ -409,4 +419,83 @@ async function rules(v) {
     });
   };
   await load();
+}
+
+// ─────────── Alexa ───────────
+async function alexaPage(v) {
+  const owner = S.user.role === 'owner';
+  const [st, lists] = await Promise.all([api.get('/api/alexa'), getLists(true)]);
+  if (!v.alive()) return;
+  const reload = () => alexaPage(v);
+  v.el.innerHTML = String(html`
+    <div class="large-title"><h1>Alexa</h1></div>
+    ${!st.connected ? html`
+      <section class="section">
+        <div class="group">${emptyState('mic', 'Not connected', 'Connect your Amazon account to keep Alexa’s shopping, to-do and other lists in sync with Finta, both ways.',
+          owner ? html`<button class="btn prominent small" data-connect>Connect</button>` : '')}</div>
+        <p class="section-foot">${owner ? 'Finta signs in to Amazon the way the Alexa app does. This isn’t an official Amazon feature: Amazon can change it at any time, and sync may stop until Finta is updated. Your Amazon password isn’t stored.' : 'Ask an owner of this household to connect Alexa.'}</p>
+      </section>` : html`
+      ${st.status === 'reconnect' ? html`<section class="section"><div class="form-error">${icon('circle-alert')}<span>Amazon no longer accepts Finta’s sign-in, so sync is paused.${owner ? ' Reconnect to start it again.' : ' Ask an owner to reconnect.'}</span></div>
+        ${owner ? html`<div class="group"><button class="row center" data-connect>Reconnect</button></div>` : ''}</section>` : ''}
+      <section class="section"><div class="group">
+        <div class="row"><span class="body"><span class="title">${st.email}</span><span class="sub">${st.site}</span></span></div>
+        <div class="row"><span class="body"><span class="title">Last Synced</span><span class="sub">${st.lastSyncAt ? ago(st.lastSyncAt) : 'Not yet'}</span></span></div>
+        ${st.lastError ? html`<div class="row"><span class="body"><span class="title text-neg">Last sync failed</span><span class="sub">${st.lastError}</span></span></div>` : ''}
+        ${st.status === 'ok' ? html`<button class="row center" data-sync>Sync Now</button>` : ''}
+      </div></section>
+      <section class="section">
+        <div class="group">${owner ? fSelect('shopping_list_id', 'Shopping List', lists.map((l) => [l.id, l.name]), st.shoppingListId ?? lists[0]?.id, { data: 'data-shop' })
+          : html`<div class="row"><span class="body"><span class="title">Shopping List</span><span class="sub">${lists.find((l) => l.id === st.shoppingListId)?.name || lists[0]?.name || '—'}</span></span></div>`}</div>
+        <p class="section-foot">Alexa’s Shopping List syncs with this list. Other Alexa lists sync with the Finta list of the same name, and Alexa’s To-do list syncs with Tasks. Finta checks Alexa every 10 minutes, and whenever Lists or Tasks is opened.</p>
+      </section>
+      ${owner ? html`<section class="section"><div class="group"><button class="row destructive" data-disconnect>Disconnect Alexa…</button></div>
+        <p class="section-foot">Disconnecting stops sync. Nothing is deleted from Alexa or Finta.</p></section>` : ''}`}`);
+
+  const el = v.el;
+  $('[data-connect]', el)?.addEventListener('click', () => connectSheet(reload));
+  $('[data-sync]', el)?.addEventListener('click', async () => {
+    try { await api.post('/api/alexa/sync'); toast('Syncing with Alexa…'); setTimeout(() => { if (v.alive()) reload(); }, 4000); }
+    catch (err) { toast(err.message, { error: true }); }
+  });
+  $('[data-shop]', el)?.addEventListener('change', async (e) => {
+    try { await api.patch('/api/alexa', { shopping_list_id: Number(e.target.value) }); toast('Shopping list changed'); }
+    catch (err) { toast(err.message, { error: true }); reload(); }
+  });
+  $('[data-disconnect]', el)?.addEventListener('click', async () => {
+    const ok = await confirmDialog({ title: 'Disconnect Alexa?', message: 'Finta stops syncing with Alexa. Nothing is deleted from either one.', confirm: 'Disconnect' });
+    if (!ok) return;
+    try { await api.del('/api/alexa'); toast('Alexa disconnected'); reload(); } catch (err) { toast(err.message, { error: true }); }
+  });
+}
+
+function connectSheet(done) {
+  sheet({
+    title: 'Connect Alexa', primary: 'Next',
+    render: () => html`<form class="form" novalidate>
+      <p class="hint">Sign in with the Amazon account your Echo uses.</p>
+      <div class="group">
+        ${fText('email', 'Email', '', { type: 'email', required: true, autocomplete: 'username', autofocus: true, placeholder: 'Required' })}
+        ${fText('password', 'Password', '', { type: 'password', required: true, autocomplete: 'current-password', placeholder: 'Required' })}
+      </div>
+      <p class="hint">Finta uses your password once to sign in and doesn’t store it.</p></form>`,
+    onSubmit: async (v) => {
+      await api.post('/api/alexa/connect', { email: v.email, password: v.password });
+      setTimeout(() => codeSheet(done), 250);
+    },
+  });
+}
+
+function codeSheet(done) {
+  sheet({
+    title: 'Enter Code', primary: 'Connect',
+    render: () => html`<form class="form" novalidate>
+      <p class="hint">Amazon sent you a code by text message. Enter it within 5 minutes.</p>
+      <div class="group">${fText('code', '', '', { placeholder: '123456', inputmode: 'numeric', autocomplete: 'one-time-code', required: true, stack: true, maxlength: 8, autofocus: true })}</div></form>`,
+    onMount: (d) => { $('[name=code]', d).classList.add('code-input'); },
+    onSubmit: async (v) => {
+      await api.post('/api/alexa/code', { code: v.code });
+      toast('Alexa connected. The first sync is running.');
+      done();
+    },
+  });
 }

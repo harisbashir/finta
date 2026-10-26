@@ -2,6 +2,7 @@
 import { api } from '../api.js';
 import { html, icon, $, $$, S, relDay, relPhrase, fmtDate, sheet, toast, fText, fSelect, fDate, fTextarea, REPEAT_LABEL, initials, emptyState, enableSwipe, addDays } from '../ui.js';
 import { getMembers } from '../store.js';
+import { alexaSync } from '../alexa.js';
 
 const AREAS = { chore: ['Chore', 'sparkles', 'blue'], maintenance: ['Maintenance', 'wrench', 'orange'], errand: ['Errand', 'car', 'green'], admin: ['Admin', 'file-text', 'indigo'], other: ['Other', 'tag', 'gray'] };
 
@@ -92,9 +93,12 @@ export async function mount(v) {
   let filter = 'all';
   let tasks = [];
   const members = await getMembers();
+  let loaded = false;
+  const alexaLine = alexaSync(v, { rerender: () => { if (loaded) render(); }, reload: () => load() });
   const load = async () => {
     tasks = await api.get('/api/tasks');
     if (!v.alive()) return;
+    loaded = true;
     render();
     v.refreshBadges();
   };
@@ -135,7 +139,8 @@ export async function mount(v) {
           <div class="group">${groups[k].map((t) => taskRow(t))}</div>
         </section>`)
         : html`<div class="group">${emptyState('list-checks', filter === 'all' ? 'No tasks yet' : 'Nothing here', 'Add chores, home maintenance and errands. Repeating tasks come back on their own.')}</div>`}
-      <p class="section-foot">Tip: repeating tasks like “Replace furnace filter” move to their next date when you tick them off.</p>`);
+      <p class="section-foot">Tip: repeating tasks like “Replace furnace filter” move to their next date when you tick them off.</p>
+      ${alexaLine()}`);
 
     const el = v.el;
     $$('[data-filter]', el).forEach((b) => b.addEventListener('click', () => { filter = b.dataset.filter; render(); }));

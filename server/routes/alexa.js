@@ -14,7 +14,10 @@ export function alexaRoutes(r, app) {
   const requireOwner = (ctx) => { if (ctx.user.role !== 'owner') throw forbidden('Only an owner can do that.'); };
   const amazon = async (fn) => {
     try { return await fn(); } catch (err) {
-      if (err instanceof AlexaError) throw new HttpError(err.code === 'network' ? 502 : 400, err.message);
+      if (err instanceof AlexaError) {
+        if (err.diag) console.warn(`[alexa] sign-in stopped (${err.code}): ${err.diag}`);
+        throw new HttpError(err.code === 'network' ? 502 : 400, err.message);
+      }
       throw err;
     }
   };

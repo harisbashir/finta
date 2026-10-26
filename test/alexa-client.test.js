@@ -204,3 +204,13 @@ test('sign-in keeps the csrf cookie from welcome and refreshes cookies like the 
   await c.session(login).getLists();
   assert.equal(log[0].headers.csrf, 'fromwelcome');
 });
+
+test('an unexpected page is described for the log without any values', async () => {
+  await assert.rejects(newClient().startLogin({ email: 'me@example.com', password: 'captcha' }), (e) => {
+    assert.equal(e.code, 'challenge');
+    assert.match(e.diag, /cvf-aamation-challenge-form/);
+    assert.match(e.diag, /\/ap\/signin-password/, 'the page that was submitted');
+    assert.doesNotMatch(e.diag, /me@example\.com|captcha/, 'no user values');
+    return true;
+  });
+});

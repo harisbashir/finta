@@ -66,6 +66,14 @@ function errorMessage(html) {
 }
 const pageTitle = (html) => decode(html.match(/<title>([\s\S]*?)<\/title>/i)?.[1] || '').trim();
 
+/** The shape of a sign-in page for the server log: title, forms, field names and step ids. Never values. */
+function describe(page) {
+  const path = (u) => { try { return new URL(u, 'https://x').pathname; } catch { return '?'; } };
+  const ids = [...new Set([...page.html.matchAll(/id=["']([^"']+)["']/g)].map((m) => m[1]).filter((id) => /auth|cvf|captcha|mfa|otp|claim|approv|challenge|verif|signin|error|warning/i.test(id)))].slice(0, 25);
+  const fs = forms(page.html).map((f) => `form#${f.attrs.id || '-'}[${f.attrs.name || '-'}] → ${path(f.attrs.action || '')} {${f.inputs.map((i) => `${i.name || '?'}:${i.type || 'text'}`).join(', ')}}`);
+  return `after ${path(page.url)} · status ${page.status} · title “${pageTitle(page.html)}” · ${fs.join(' | ') || 'no forms'} · ids: ${ids.join(', ') || 'none'}`.slice(0, 2000);
+}
+
 // ── Cookies ──
 function takeCookies(res, into) {
   for (const line of res.headers.getSetCookie?.() || []) {
@@ -166,7 +174,9 @@ export function createAlexaClient({ fetch = globalThis.fetch, hosts = DEFAULT_HO
     }
     if (hasId(page.html, 'cvf-aamation-challenge-form') || !hasId(page.html, 'auth-mfa-otpcode')) {
       const title = pageTitle(page.html);
-      throw new AlexaError('challenge', `Amazon asked for something Finta can’t show here${title ? ` (“${title}”)` : ''}. Wait a few minutes and try again, or sign in to amazon.ca in a browser first.`);
+      const err = new AlexaError('challenge', `Amazon asked for something Finta can’t show here${title ? ` (“${title}”)` : ''}. Wait a few minutes and try again, or sign in to amazon.ca in a browser first.`);
+      err.diag = describe(page);
+      throw err;
     }
     const form = pickForm(page.html, { needs: 'otpCode' });
     return { jar, url: page.url, form, verifier, serial, createdAt: now() };
@@ -217,7 +227,9 @@ export function createAlexaClient({ fetch = globalThis.fetch, hosts = DEFAULT_HO
       (loc) => loc.searchParams.has('openid.oa2.authorization_code'));
     if (!result.stoppedAt) {
       failOnError(result);
-      throw new AlexaError('challenge', 'Amazon didn’t accept the sign-in. Start again and use the newest code.');
+      const err = new AlexaError('challenge', 'Amazon didn’t accept the sign-in. Start again and use the newest code.');
+      err.diag = describe(result);
+      throw err;
     }
     const login = await register(result.stoppedAt.searchParams.get('openid.oa2.authorization_code'), pending);
     // Find which Amazon site holds this account's Alexa lists, then get cookies for it (the library

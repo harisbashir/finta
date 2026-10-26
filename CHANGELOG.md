@@ -9,6 +9,8 @@
 - "New Market" in an address no longer makes a shop a grocery store, and Costco Gas is Transport.
 
 ### Improved
+- **More banks:** RBC ("WWW PAYMENT - …"), TD (" … BPY" bill payments), BMO ("PAY BILL …"), Tangerine ("EFT Withdrawal to …", "Pre-Authorized Payment - …"), "Direct deposit from …", and French wording from Desjardins and National Bank ("Paiement facture - AccèsD Internet /…", "PAIEMENT PRÉAUTORISÉ", "DÉPÔT DIRECT", "VIREMENT", "FRAIS", "INTÉRÊTS").
+- **More billers:** phone and internet (SaskTel, Distributel, Start.ca, Carry Telecom, Bell MTS), power and gas across Canada (SaskPower, SaskEnergy, NB Power, Nova Scotia Power, FortisBC, Newmarket-Tay Power, Veridian, Enersource, Entegrus, any "… Utilities"), insurers (Equitable Life, iA, Empire Life, Allianz, Blue Cross, Green Shield, Pembridge, ICBC, SGI, Onlia, Square One, CAA, "Assurance …"), and 407 ETR, SAAQ and plate renewals.
 - Finta recognizes more shops: convenience stores (Mac's, 7-Eleven), HelloFresh, Winners/HomeSense, Moores, Coles, Canada Computers, Levi's, Chick-fil-A, burger and pizza places, PartSource, parking (Impark, Precise ParkLink, Toronto Parking Authority) and NYC transit, Sport Clips, nail salons, FYidoctors, chemists, labs, and NSF charges.
 
 

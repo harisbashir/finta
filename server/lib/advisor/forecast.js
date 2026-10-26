@@ -12,7 +12,7 @@ const MIN_HISTORY_DAYS = 30;
 const OVERDUE_DAYS = 7;
 const WATCH_BELOW = 10000;   // $100
 
-export function forecast(db, householdId, todayStr, { scope = 'household', userId = null, days = 60 } = {}) {
+export function forecast(db, householdId, todayStr, { scope = 'household', userId = null, viewerId = null, days = 60 } = {}) {
   const mine = (row) => scope !== 'me' || row.owner_id === userId;
   const chequing = db.prepare(`SELECT * FROM accounts WHERE household_id = ? AND type = 'chequing' AND archived = 0`).all(householdId).filter(mine);
   if (!chequing.length) return { basis: 'no-chequing', start: 0, points: [], low: null, events: [], warning: null, typical: null };
@@ -35,7 +35,9 @@ export function forecast(db, householdId, todayStr, { scope = 'household', userI
   const since = addDays(todayStr, -(HISTORY_DAYS - 1));
   const history = db.prepare(`SELECT t.*, peer.account_id AS peer_account FROM transactions t LEFT JOIN transactions peer ON peer.id = t.transfer_peer_id
     WHERE t.household_id = ? AND t.date BETWEEN ? AND ?`).all(householdId, since, todayStr).filter((t) => ids.has(t.account_id));
-  const chequingMerchants = new Set(history.map((t) => t.merchant).filter(Boolean));
+  // Repeats are listed by name only from accounts the viewer may see line by line; others still count in the typical day.
+  const visible = new Set(chequing.filter((a) => viewerId == null || a.owner_id == null || a.owner_id === viewerId || !a.is_private).map((a) => a.id));
+  const chequingMerchants = new Set(history.filter((t) => visible.has(t.account_id)).map((t) => t.merchant).filter(Boolean));
   const detected = recurringSuggestions(db, householdId, todayStr, { limit: Infinity }).filter((s) => chequingMerchants.has(s.merchant));
   for (const s of detected) {
     for (const date of occurrences({ frequency: s.frequency, start: s.last_date }, addDays(todayStr, 1), end)) {

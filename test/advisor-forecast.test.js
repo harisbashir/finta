@@ -102,3 +102,15 @@ test('scope me forecasts only my chequing and my bills', () => {
   assert.equal(mine.events.length, 0);
   assert.equal(forecast(h.db, h.hid, TODAY).start, 1000000);
 });
+
+test('repeats on someone else’s private account are not named to a viewer, but still count', () => {
+  const h = makeHousehold();
+  const theirs = h.account({ type: 'chequing', balance: 2000000, owner_id: h.member, is_private: 1 });
+  for (let i = 0; i < 90; i++) h.tx({ date: addDays(TODAY, -i), amount: 1000, account_id: theirs, category: 'Groceries' });
+  for (let m = 1; m <= 4; m++) h.tx({ date: addMonths('2025-12-05', m), amount: 5000, account_id: theirs, merchant: 'PRIVATE PAYEE', note: 'Private Payee', category: 'Subscriptions' });
+  const owner = forecast(h.db, h.hid, TODAY, { viewerId: h.owner });
+  assert.ok(!JSON.stringify(owner.events).includes('Private Payee'));
+  assert.ok(owner.typical.out > 1000, 'their repeat still moves the balance');
+  const member = forecast(h.db, h.hid, TODAY, { viewerId: h.member });
+  assert.ok(JSON.stringify(member.events).includes('Private Payee'));
+});

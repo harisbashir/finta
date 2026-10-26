@@ -7,11 +7,13 @@ import { today } from '../dates.js';
 import { completeTask } from '../tasks.js';
 
 const VIEW_MIN_MS = 60000;
+const ITEM_LIMIT = 200;   // what one fetch returns; past this, sync can't see the whole list
 const NAME_MAX = { item: 80, task: 120 };
 const LIST_NAME_MAX = 40;
 
 export function createAlexaRunner({ db, makeClient = () => createAlexaClient(), intervalMs = 600000, debounceMs = 2000, log = console, now = Date.now } = {}) {
   const state = new Map(); // householdId → { chain, queued, debounce, lastRunAt }
+  const emptySeen = new Set(); // "householdId:alexaListId" that came back empty last run
   const st = (hid) => {
     if (!state.has(hid)) state.set(hid, { chain: Promise.resolve(), queued: false, debounce: null, lastRunAt: 0 });
     return state.get(hid);
@@ -34,6 +36,7 @@ export function createAlexaRunner({ db, makeClient = () => createAlexaClient(), 
       const link = getLink(hid);
       if (!link || link.status !== 'ok') return;
       const s = st(hid);
+      if (reason === 'now') { enqueue(hid); return; }
       if (reason === 'view') {
         if (now() - s.lastRunAt < VIEW_MIN_MS || s.queued) return;
         enqueue(hid);
@@ -96,10 +99,11 @@ export function createAlexaRunner({ db, makeClient = () => createAlexaClient(), 
       }
     }
     for (const list of lists) {
-      if (list.type !== 'CUSTOM' || !String(list.name || '').trim()) continue;
-      const match = fintaLists().find((l) => sameName(l.name, list.name));
+      const name = String(list.name || '').trim().slice(0, LIST_NAME_MAX).trim();
+      if (list.type !== 'CUSTOM' || !name) continue;
+      const match = fintaLists().find((l) => sameName(l.name, name));
       if (match && match.id === shopId) continue;
-      pairings.push({ list, kind: 'item', fintaListId: match?.id ?? createList(String(list.name).trim()) });
+      pairings.push({ list, kind: 'item', fintaListId: match?.id ?? createList(name) });
     }
     return pairings;
   }
@@ -108,7 +112,9 @@ export function createAlexaRunner({ db, makeClient = () => createAlexaClient(), 
     const elsewhere = new Set(db.prepare('SELECT finta_id FROM alexa_items WHERE household_id = ? AND kind = ? AND alexa_list_id != ?')
       .all(hid, kind, list.id).map((r) => r.finta_id));
     const rows = kind === 'task'
-      ? db.prepare(`SELECT id, title AS name, done_at IS NOT NULL AS checked, repeat, created_at FROM tasks WHERE household_id = ?`).all(hid)
+      // Like the Tasks screen: open tasks and ones done in the last 14 days. Older ones leave Alexa.
+      ? db.prepare(`SELECT id, title AS name, done_at IS NOT NULL AS checked, repeat, created_at FROM tasks
+          WHERE household_id = ? AND (done_at IS NULL OR done_at > datetime('now', '-14 days'))`).all(hid)
       : db.prepare(`SELECT id, name, checked, 'none' AS repeat, created_at FROM shopping_items WHERE household_id = ? AND list_id = ?`).all(hid, fintaListId);
     return rows.filter((r) => !elsewhere.has(r.id)).map((r) => ({ ...r, checked: !!r.checked }));
   }
@@ -117,8 +123,20 @@ export function createAlexaRunner({ db, makeClient = () => createAlexaClient(), 
     const { list, kind, fintaListId } = pairing;
     const items = await session.getItems(list.id);
     if (!alive(hid)) return;
+    if (items.length >= ITEM_LIMIT) {
+      const label = list.name || (list.type === 'TODO' ? 'To-do list' : 'Shopping List');
+      throw Object.assign(new Error(`Alexa’s ${label} has ${ITEM_LIMIT} or more items, so Finta skipped it. Delete completed items in the Alexa app.`), { code: 'api' });
+    }
     const all = db.prepare('SELECT * FROM alexa_items WHERE household_id = ? AND alexa_list_id = ?').all(hid, list.id);
     const valid = all.filter((s) => s.kind === kind && (kind === 'task' || s.finta_list_id === fintaListId));
+    // An empty list where items used to be may be an Amazon hiccup: wait for a second empty answer.
+    const emptyKey = `${hid}:${list.id}`;
+    if (!items.length && valid.length && !emptySeen.has(emptyKey)) {
+      emptySeen.add(emptyKey);
+      log.warn(`[alexa] household ${hid}: ${list.type} list came back empty; checking again next run`);
+      return;
+    }
+    emptySeen.delete(emptyKey);
     const orphans = all.filter((s) => !valid.includes(s));
     const finta = fintaRows(hid, pairing);
     const created = new Map(finta.map((r) => [r.id, r.created_at]));
@@ -151,7 +169,9 @@ export function createAlexaRunner({ db, makeClient = () => createAlexaClient(), 
     if (added.length) {
       // Amazon doesn't return the new item's ID: read the list again and match by name.
       const known = new Set([...items.map((i) => i.itemId), ...valid.map((s) => s.alexa_item_id)]);
-      const fresh = (await session.getItems(list.id)).filter((i) => !known.has(i.itemId));
+      let fresh = [];
+      // If this fails, the adds are matched by name next run; the Finta side below still applies.
+      await attempt(async () => { fresh = (await session.getItems(list.id)).filter((i) => !known.has(i.itemId)); });
       for (const a of added) {
         const item = fresh.find((i) => sameName(i.name, a.name));
         if (!item) continue;
@@ -183,8 +203,12 @@ export function createAlexaRunner({ db, makeClient = () => createAlexaClient(), 
           snaps.push(a);
         } else if (a.op === 'finta.roll') {
           const task = db.prepare('SELECT * FROM tasks WHERE id = ? AND household_id = ?').get(a.fintaId, hid);
-          if (task) completeTask(db, task, todayStr);
-          snaps.push({ ...a, checked: false });
+          if (task) {
+            db.prepare('UPDATE tasks SET title = ? WHERE id = ?').run(a.name, task.id);
+            completeTask(db, task, todayStr);
+          }
+          // Still ticked on Alexa until the untick below succeeds; if it fails, next run retries the untick, not the roll.
+          snaps.push({ ...a, checked: true });
           rolls.push(a);
         } else if (a.op === 'finta.delete') {
           db.prepare(`DELETE FROM ${kind === 'task' ? 'tasks' : 'shopping_items'} WHERE id = ? AND household_id = ?`).run(a.fintaId, hid);
@@ -203,7 +227,11 @@ export function createAlexaRunner({ db, makeClient = () => createAlexaClient(), 
       for (const s of snaps) put.run(hid, list.id, s.itemId, kind, s.fintaId, fintaListId, s.fintaId, s.name, s.checked ? 1 : 0, Number(s.version) || 0);
     });
     // A repeating task ticked on Alexa is open again in Finta, so untick it on Alexa.
-    for (const a of rolls) await attempt(() => session.updateItem(list.id, a.itemId, a.version, { checked: false }));
+    for (const a of rolls) {
+      if (await attempt(() => session.updateItem(list.id, a.itemId, a.version, { checked: false })) && alive(hid)) {
+        db.prepare('UPDATE alexa_items SET checked = 0 WHERE household_id = ? AND alexa_item_id = ?').run(hid, a.itemId);
+      }
+    }
     if (firstError) throw firstError;
   }
 

@@ -91,3 +91,14 @@ test('long Alexa name is trimmed to maxName', () => {
 test('blank Alexa name is ignored', () => {
   assert.deepEqual(run([], [A('a', '   ')], []), []);
 });
+
+test('a long Alexa name stays stable after it was trimmed into the snapshot', () => {
+  const long = 'x'.repeat(100);
+  assert.deepEqual(run([F(1, 'x'.repeat(80), true)], [A('a', long, false, 2)], [S(1, 'a', 'x'.repeat(80), false, 2)]),
+    [{ op: 'alexa.update', fintaId: 1, itemId: 'a', version: 2, name: 'x'.repeat(80), checked: true }]);
+});
+
+test('repeating task ticked and renamed on Alexa carries the new name', () => {
+  assert.deepEqual(run([F(1, 'water plants', false, 'weekly')], [A('a', 'water the plants', true, 2)], [S(1, 'a', 'water plants')]),
+    [{ op: 'finta.roll', fintaId: 1, itemId: 'a', version: 2, name: 'water the plants' }]);
+});

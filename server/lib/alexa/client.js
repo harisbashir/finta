@@ -36,6 +36,7 @@ const decode = (s) => String(s).replace(/&amp;/g, '&').replace(/&quot;/g, '"').r
 function attrs(tag) {
   const out = {};
   for (const m of tag.matchAll(/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g)) out[m[1].toLowerCase()] = decode(m[2] ?? m[3] ?? m[4]);
+  if (!('checked' in out) && /(^|\s)checked(?=[\s/]|$)/i.test(tag)) out.checked = '';   // bare boolean attribute
   return out;
 }
 function forms(html) {
@@ -73,7 +74,7 @@ function takeCookies(res, into) {
     if (eq < 1) continue;
     const name = pair.slice(0, eq).trim();
     const value = pair.slice(eq + 1).trim().replace(/^"|"$/g, '');
-    const expired = opts.some((o) => /^\s*max-age\s*=\s*0\s*$/i.test(o)) || !value;
+    const expired = !value || opts.some((o) => /^\s*max-age\s*=\s*0\s*$/i.test(o) || (/^\s*expires\s*=/i.test(o) && Date.parse(o.split('=').slice(1).join('=')) < Date.now()));
     if (expired) delete into[name]; else into[name] = value;
   }
 }
@@ -219,14 +220,14 @@ export function createAlexaClient({ fetch = globalThis.fetch, hosts = DEFAULT_HO
       throw new AlexaError('challenge', 'Amazon didn’t accept the sign-in. Start again and use the newest code.');
     }
     const login = await register(result.stoppedAt.searchParams.get('openid.oa2.authorization_code'), pending);
-    // Find which Amazon site holds this account's Alexa lists.
+    // Find which Amazon site holds this account's Alexa lists, then get cookies for it (the library
+    // always does this outside amazon.com).
     const res = await send(`${hosts.alexa}/api/welcome`, { jar: { ...login.cookies } });
     const host = res.ok ? (await res.json().catch(() => ({}))).alexaHostName : null;
-    const domain = host ? String(host).replace(/^alexa\./, '') : 'amazon.ca';
-    if (domain !== login.domain) {
-      login.domain = domain;
-      await refreshCookies(login);
-    }
+    login.domain = host ? String(host).replace(/^alexa\./, '') : 'amazon.ca';
+    await refreshCookies(login);
+    // Alexa hands out the csrf cookie the lists API expects back as a header.
+    await send(`${hosts.alexa}/api/welcome`, { jar: login.cookies });
     return login;
   }
 
@@ -242,7 +243,7 @@ export function createAlexaClient({ fetch = globalThis.fetch, hosts = DEFAULT_HO
     const json = await res.json().catch(() => null);
     const byDomain = json?.response?.tokens?.cookies;
     if (!res.ok || !byDomain) throw new AlexaError('auth', 'Amazon no longer accepts Finta’s sign-in. Reconnect Alexa in Settings.');
-    const cookies = {};
+    const cookies = login.cookies?.csrf ? { csrf: login.cookies.csrf } : {};
     for (const list of Object.values(byDomain)) for (const c of list) cookies[c.Name] = String(c.Value).replace(/"/g, '');
     login.cookies = cookies;
     login.cookiesAt = now();
@@ -253,7 +254,7 @@ export function createAlexaClient({ fetch = globalThis.fetch, hosts = DEFAULT_HO
       if (!login.cookiesAt || now() - login.cookiesAt > COOKIE_MAX_AGE_MS) await refreshCookies(login);
       const url = `${hosts.retail(login.domain)}${LISTS_PATH}/${path}${query ? `?${new URLSearchParams(query)}` : ''}`;
       const once = () => send(url, {
-        method, body: method === 'GET' || method === 'DELETE' ? undefined : JSON.stringify(body ?? {}),
+        method, body: method === 'GET' ? undefined : JSON.stringify(body ?? {}),   // Amazon refuses list calls without a body
         jar: login.cookies,
         headers: { 'Content-Type': 'application/json; charset=utf-8', Cookie: cookieHeader({ ...login.cookies, 'lc-acbit': LANGUAGE }), ...(login.cookies.csrf ? { csrf: login.cookies.csrf } : {}) },
       });

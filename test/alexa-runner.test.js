@@ -18,11 +18,18 @@ function fakeAlexa() {
   const find = (id) => lists.find((l) => l.id === id);
   const session = () => ({
     async getLists() { calls.push('getLists'); if (fail.lists) throw fail.lists; return lists.map(({ id, type, name }) => ({ id, type, name })); },
-    async getItems(id) { calls.push(`getItems:${id}`); if (gate) await gate; return find(id).items.map((i) => ({ ...i })); },
+    async getItems(id) {
+      calls.push(`getItems:${id}`);
+      if (gate) await gate;
+      if (fail.getItemsOnce?.[id]?.length) throw fail.getItemsOnce[id].shift();
+      if (fail.emptyOnce?.[id]) { fail.emptyOnce[id]--; return []; }
+      return find(id).items.slice(0, 200).map((i) => ({ ...i }));
+    },
     async addItem(id, name) { calls.push('add'); if (fail.add) throw fail.add; find(id).items.push({ itemId: `n${++n}`, name, checked: false, version: 1 }); },
     async updateItem(id, itemId, version, { name, checked }) {
       calls.push('update');
       if (fail.update) throw fail.update;
+      if (fail.untick && checked === false) throw fail.untick;
       const it = find(id).items.find((i) => i.itemId === itemId);
       if (name !== undefined) it.name = name;
       if (checked !== undefined) it.checked = checked;
@@ -188,4 +195,75 @@ test('requestSync for a household without Alexa does nothing', async () => {
   runner.requestSync(hid, { reason: 'change' });
   await tick();
   assert.equal(fake.calls.length, 0);
+});
+
+test('a long custom list name maps to one Finta list across runs', async () => {
+  const name = 'Things to pick up from the hardware store this weekend';
+  fake.lists.push({ id: 'C', type: 'CUSTOM', name, items: [{ itemId: 'c1', name: 'screws', checked: false, version: 1 }] });
+  for (let i = 0; i < 3; i++) await runner.syncNow(hid);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM shopping_lists').get().n, 2);
+  assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM shopping_items WHERE name = 'screws'`).get().n, 1);
+});
+
+test('a list at the 200-item limit is left alone and reported', async () => {
+  for (let i = 0; i < 205; i++) fake.shop().push({ itemId: `x${i}`, name: `thing ${i}`, checked: true, version: 1 });
+  addFinta('eggs');
+  await runner.syncNow(hid);
+  await runner.syncNow(hid);
+  assert.equal(fake.calls.filter((c) => c === 'add').length, 0);
+  assert.deepEqual(items(), [{ name: 'eggs', checked: 0 }]);
+  assert.match(link().last_error, /200/);
+});
+
+test('only open and recently done tasks sync', async () => {
+  db.prepare(`INSERT INTO tasks (household_id, title, done_at) VALUES (?, 'old chore', datetime('now', '-30 days'))`).run(hid);
+  db.prepare(`INSERT INTO tasks (household_id, title, done_at) VALUES (?, 'recent chore', datetime('now', '-2 days'))`).run(hid);
+  await runner.syncNow(hid);
+  assert.deepEqual(fake.todo().map((i) => i.name), ['recent chore']);
+});
+
+test('a repeating task is not rolled twice when unticking on Alexa fails', async () => {
+  const due = today('America/Toronto');
+  db.prepare(`INSERT INTO tasks (household_id, title, due_date, repeat) VALUES (?, 'water plants', ?, 'weekly')`).run(hid, due);
+  await runner.syncNow(hid);
+  fake.todo()[0].checked = true;
+  fake.fail.untick = new AlexaError('network', 'down');
+  await runner.syncNow(hid);
+  const once = db.prepare('SELECT due_date FROM tasks').get().due_date;
+  delete fake.fail.untick;
+  await runner.syncNow(hid);
+  assert.equal(db.prepare('SELECT due_date FROM tasks').get().due_date, once, 'rolled once');
+  assert.equal(fake.todo()[0].checked, false);
+});
+
+test('one empty fetch does not delete Finta items; a second one does', async () => {
+  fake.shop().push({ itemId: 'a', name: 'milk', checked: false, version: 1 }, { itemId: 'b', name: 'eggs', checked: false, version: 1 });
+  await runner.syncNow(hid);
+  fake.fail.emptyOnce = { S: 2 };
+  await runner.syncNow(hid);
+  assert.equal(items().length, 2);
+  fake.shop().length = 0;
+  await runner.syncNow(hid);
+  await runner.syncNow(hid);
+  assert.equal(items().length, 0);
+});
+
+test('a failed re-fetch after adding still applies the Finta side', async () => {
+  addFinta('eggs');
+  fake.shop().push({ itemId: 'a', name: 'milk', checked: false, version: 1 });
+  fake.fail.getItemsOnce = { S: [] };
+  const original = fake.client.session;
+  let n = 0;
+  fake.client.session = (l) => { const s = original(l); const g = s.getItems; s.getItems = async (id) => { if (id === 'S' && ++n === 2) throw new AlexaError('network', 'blip'); return g(id); }; return s; };
+  runner = createAlexaRunner({ db, makeClient: () => fake.client, debounceMs: 5, log: quiet });
+  await runner.syncNow(hid);
+  assert.deepEqual(items().map((i) => i.name).sort(), ['eggs', 'milk']);
+});
+
+test('requestSync now runs even right after a sync', async () => {
+  await runner.syncNow(hid);
+  const before = fake.calls.length;
+  runner.requestSync(hid, { reason: 'now' });
+  await tick();
+  assert.ok(fake.calls.length > before);
 });

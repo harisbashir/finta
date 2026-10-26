@@ -143,3 +143,8 @@ test('sixth connect attempt in 15 minutes is rate limited', async () => {
   for (let i = 0; i < 6; i++) codes.push((await owner.post('/api/alexa/connect', { email: 'me@example.com', password: 'wrong' })).status);
   assert.equal(codes.at(-1), 429);
 });
+
+test('Sync Now asks for an immediate sync', async () => {
+  await member.post('/api/alexa/sync', { now: true });
+  assert.deepEqual(calls, [{ hid, reason: 'now' }]);
+});

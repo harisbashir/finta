@@ -454,7 +454,7 @@ async function alexaPage(v) {
   const el = v.el;
   $('[data-connect]', el)?.addEventListener('click', () => connectSheet(reload));
   $('[data-sync]', el)?.addEventListener('click', async () => {
-    try { await api.post('/api/alexa/sync'); toast('Syncing with Alexa…'); setTimeout(() => { if (v.alive()) reload(); }, 4000); }
+    try { await api.post('/api/alexa/sync', { now: true }); toast('Syncing with Alexa…'); setTimeout(() => { if (v.alive()) reload(); }, 4000); }
     catch (err) { toast(err.message, { error: true }); }
   });
   $('[data-shop]', el)?.addEventListener('change', async (e) => {

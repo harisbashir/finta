@@ -19,16 +19,18 @@ export function ago(sqlUtc) {
  */
 export function alexaSync(v, { rerender, reload }) {
   let st = null;
+  // Never redraw under someone typing a new item or task.
+  const typing = () => { const a = document.activeElement; return !!a && /^(INPUT|TEXTAREA)$/.test(a.tagName) && !!a.value; };
   (async () => {
     try {
       st = await api.get('/api/alexa');
       if (!st.connected || !v.alive()) return;
-      rerender();
-      st = await api.post('/api/alexa/sync');
+      if (!typing()) rerender();
+      const before = (st = await api.post('/api/alexa/sync')).lastSyncAt;
       setTimeout(async () => {
         if (!v.alive()) return;
-        try { st = await api.get('/api/alexa'); } catch { /* keep the last status */ }
-        reload();
+        try { st = await api.get('/api/alexa'); } catch { return; }
+        if (st.lastSyncAt !== before && !typing()) reload();
       }, 4000);
     } catch { /* the status line is optional */ }
   })();

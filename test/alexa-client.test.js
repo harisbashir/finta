@@ -55,7 +55,7 @@ before(async () => {
         extensions: { device_info: { device_serial_number: 'X' }, customer_info: { user_id: 'CUST1', home_region: 'NA' } },
       } } });
     }
-    if (p === '/api/welcome') return json({ alexaHostName: 'alexa.amazon.ca' });
+    if (p === '/api/welcome') return json({ alexaHostName: 'alexa.amazon.ca' }, 200, ['csrf=fromwelcome; Path=/']);
     if (p === '/auth/token') return json({ response: { tokens: { cookies: { '.amazon.ca': [{ Name: 'at-acbca', Value: '"web2"' }, { Name: 'session-token', Value: 'SESSTOK2' }] } } } });
     const lists = '/alexashoppinglists/api/v2/lists';
     if (p === `${lists}/fetch`) {
@@ -85,8 +85,8 @@ test('login happy path: email → password → code → register → welcome', a
   const login = await c.finishLogin(pending, '123456');
   assert.equal(login.refreshToken, 'RT');
   assert.equal(login.domain, 'amazon.ca');
-  assert.equal(login.cookies['session-token'], 'SESSTOK');
-  assert.equal(login.cookies['at-acbca'], 'web1', 'quotes stripped');
+  assert.equal(login.cookies['session-token'], 'SESSTOK2', 'cookies refreshed after register');
+  assert.equal(login.cookies['at-acbca'], 'web2', 'quotes stripped');
   const emailPost = log.find((r) => r.path === '/ap/signin-email');
   const sent = Object.fromEntries(new URLSearchParams(emailPost.body));
   assert.equal(sent.email, 'me@example.com');
@@ -108,7 +108,8 @@ test('SMS device choice page is submitted before the code page', async () => {
   state.chooseFirst = true;
   const pending = await newClient().startLogin({ email: 'me@example.com', password: 'right' });
   assert.ok(pending);
-  assert.ok(log.some((r) => r.path === '/ap/choose'));
+  const choose = log.find((r) => r.path === '/ap/choose');
+  assert.equal(new URLSearchParams(choose.body).get('otpDeviceContext'), 'sms-1', 'the checked option is sent');
 });
 
 test('wrong password is an auth error with Amazon’s message', async () => {
@@ -190,5 +191,16 @@ test('add, update and delete send the right requests', async () => {
   assert.equal(upd.query.get('version'), '3');
   assert.deepEqual(JSON.parse(upd.body), { itemAttributesToUpdate: [{ type: 'itemName', value: 'oat milk' }, { type: 'itemStatus', value: 'COMPLETE' }], itemAttributesToRemove: [] });
   assert.equal(del.method, 'DELETE');
+  assert.equal(del.body, '{}', 'Amazon expects a JSON body on every list call');
   assert.equal(del.query.get('version'), '4');
+});
+
+test('sign-in keeps the csrf cookie from welcome and refreshes cookies like the library', async () => {
+  const c = newClient();
+  const login = await c.finishLogin(await c.startLogin({ email: 'me@example.com', password: 'right' }), '123456');
+  assert.ok(log.some((r) => r.path === '/auth/token'), 'auth_cookies refresh after register');
+  assert.equal(login.cookies.csrf, 'fromwelcome');
+  log.length = 0;
+  await c.session(login).getLists();
+  assert.equal(log[0].headers.csrf, 'fromwelcome');
 });

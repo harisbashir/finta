@@ -61,7 +61,8 @@ export function alexaRoutes(r, app) {
   });
 
   r.post('/api/alexa/sync', (ctx) => {
-    app.alexa.requestSync(ctx.household.id, { reason: 'view' });
+    // Opening Lists or Tasks asks for a 'view' sync (skipped if one ran in the last minute); Sync Now always runs.
+    app.alexa.requestSync(ctx.household.id, { reason: ctx.body?.now ? 'now' : 'view' });
     return status(ctx);
   });
 

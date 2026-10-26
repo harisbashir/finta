@@ -31,7 +31,8 @@ export function plan({ finta, alexa, snapshots, maxName = 80 }) {
     if (!row) { actions.push({ op: 'alexa.delete', itemId: item.itemId, version: item.version }); continue; }
     if (!item) { actions.push({ op: 'finta.delete', fintaId: row.id, itemId: s.itemId }); continue; }
     const fChanged = !sameName(row.name, s.name) || !!row.checked !== !!s.checked;
-    const aChanged = !sameName(item.name, s.name) || !!item.checked !== !!s.checked;
+    // The snapshot holds the trimmed name, so compare Alexa's name trimmed the same way.
+    const aChanged = !sameName(clean(item.name), s.name) || !!item.checked !== !!s.checked;
     if (aChanged) actions.push(pull(row, item));
     else if (fChanged) actions.push({ op: 'alexa.update', fintaId: row.id, itemId: item.itemId, version: item.version, name: row.name, checked: !!row.checked });
   }

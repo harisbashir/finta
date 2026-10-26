@@ -59,8 +59,10 @@ before(async () => {
     if (p === '/api/notifications') {
       const base = { deviceSerialNumber: 'SER', deviceType: 'T', rRuleData: { nextTriggerTimes: null, recurrenceRules: null }, recurringPattern: null };
       return json({ notifications: [
-        { ...base, id: 'r2', type: 'Reminder', status: 'ON', reminderLabel: 'take out recycling', alarmTime: 2000, triggerTime: 2000, recurringPattern: 'XXXX-WE' },
-        { ...base, id: 'r1', type: 'Reminder', status: 'ON', reminderLabel: 'call mom', alarmTime: 1000, triggerTime: 1000 },
+        // Shapes as Amazon really sends them: triggerTime 0, next time of a repeating reminder as an ISO string.
+        { ...base, id: 'r2', type: 'Reminder', status: 'ON', reminderLabel: 'take out recycling', alarmTime: 999999, triggerTime: 0, recurringPattern: 'XXXX-WXX-3',
+          rRuleData: { nextTriggerTimes: ['1970-01-01T00:00:02.000-00:00'], recurrenceRules: ['FREQ=WEEKLY;BYDAY=WE'] } },
+        { ...base, id: 'r1', type: 'Reminder', status: 'ON', reminderLabel: 'call mom', alarmTime: 1000, triggerTime: 0, rRuleData: {} },
         { ...base, id: 'r3', type: 'Reminder', status: 'OFF', reminderLabel: 'done already', alarmTime: 500 },
         { ...base, id: 'a1', type: 'Alarm', status: 'ON', alarmTime: 700 },
       ] });

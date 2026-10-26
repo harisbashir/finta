@@ -90,6 +90,12 @@ function takeCookies(res, into) {
     if (expired) delete into[name]; else into[name] = value;
   }
 }
+/** When a reminder next goes off (ms). Amazon sends triggerTime 0, and a repeating reminder's next time as an ISO string. */
+function reminderTime(n) {
+  const candidates = [Date.parse(n.rRuleData?.nextTriggerTimes?.[0]), Number(n.triggerTime), Number(n.alarmTime)];
+  return candidates.find((t) => Number.isFinite(t) && t > 0) ?? null;
+}
+
 const cookieHeader = (jar) => Object.entries(jar).map(([k, v]) => `${k}=${v}`).join('; ');
 
 function initCookies() {
@@ -326,7 +332,7 @@ export function createAlexaClient({ fetch = globalThis.fetch, hosts = DEFAULT_HO
           .map((n) => ({
             id: String(n.id),
             label: String(n.reminderLabel || 'Reminder').slice(0, 200),
-            at: Number(n.rRuleData?.nextTriggerTimes?.[0] ?? n.triggerTime ?? n.alarmTime) || null,
+            at: reminderTime(n),
             repeats: !!(n.recurringPattern || n.rRuleData?.recurrenceRules?.length || n.rRuleData?.frequency),
           }))
           .sort((a, b) => (a.at ?? Infinity) - (b.at ?? Infinity));

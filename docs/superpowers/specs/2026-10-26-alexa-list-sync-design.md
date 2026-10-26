@@ -44,21 +44,22 @@ The only module that talks to Amazon. Ported from `aioamazondevices` (`login.py`
 2. `finishLogin(pending, code)`
    - Submit the code form with `otpCode`, `mfaSubmit=Submit` and `rememberDevice=false`.
    - Read `openid.oa2.authorization_code` from the redirect URL. Don't follow the redirect to `/ap/maplanding`; read it from the `Location` header.
-   - POST `https://api.amazon.ca/auth/register` with the registration body from `aioamazondevices`. Use `requested_token_type` values `bearer`, `mac_dms`, `website_cookies` and `store_authentication_cookie`.
-   - Return the stored login data: refresh token, access token and its expiry, ADP token, device private key, website cookies, device serial, customer ID and site.
+   - POST `https://api.amazon.com/auth/register` (global endpoint) with the registration body from `aioamazondevices`. Use `requested_token_type` values `bearer`, `mac_dms`, `website_cookies` and `store_authentication_cookie`.
+   - Find the account's Alexa site: GET `https://alexa.amazon.ca/api/welcome` and read `alexaHostName` (for example `alexa.amazon.ca`). The retail domain is that host with `alexa` replaced by `www`. If it differs from the sign-in domain, refresh cookies for it.
+   - Return the stored login data: refresh token, access token and its expiry, ADP token, device private key, website cookies, `session-token` cookie, device serial, customer ID and retail domain.
 
 **Session**
-- `refreshCookies(login)`: POST `https://api.amazon.ca/auth/token` with `requested_token_type=auth_cookies`, `source_token_type=refresh_token` and `domain=www.amazon.ca`. This replaces the website cookies.
+- `refreshCookies(login)`: POST `https://api.amazon.com/auth/token` (form-encoded) with `requested_token_type=auth_cookies`, `source_token_type=refresh_token`, `app_name=Finta` and `domain=www.<retail domain>`. The response's `response.tokens.cookies` is a map of domain → `[{ Name, Value }]`. This replaces the website cookies.
 - Before each sync: if the last cookie refresh was more than 12 hours ago, refresh. If a list call returns 401 or 403, refresh once and retry once.
 - Read the `csrf` cookie from responses and send it back as a `csrf` header, the same way the library does.
-- Send the same User-Agent and Accept-Language headers the library sends.
+- Every list request sends a Cookie header with the website cookies, `session-token` and `lc-acbit=en-CA`. It also sends the library's browser User-Agent and `Accept-Language: en-CA`.
 
-**Lists**: all calls are on `https://www.amazon.ca/alexashoppinglists/api/v2/lists`.
+**Lists**: all calls are on `https://www.<retail domain>/alexashoppinglists/api/v2/lists`.
 
 | Function | Call |
 |---|---|
-| `getLists()` | `POST /fetch` → `listInfoList[]`: `{ listId, listType: SHOPPING_LIST, TO_DO or CUSTOM, listName }` |
-| `getItems(listId)` | `POST /{listId}/items/fetch?limit=100`, following pages if there are more → `itemInfoList[]`: `{ itemId, itemName, itemStatus: ACTIVE or COMPLETE, version }` |
+| `getLists()` | `POST /fetch` → `listInfoList[]`: `{ listId, listType: SHOP, TODO or CUSTOM, listName }` |
+| `getItems(listId)` | `POST /{listId}/items/fetch?limit=200` (the library uses 100 and doesn't page; Finta asks for 200 and logs a warning if 200 come back) → `itemInfoList[]`: `{ itemId, itemName, itemStatus: ACTIVE or COMPLETE, version }` |
 | `addItem(listId, name)` | `POST /{listId}/items`, body `{ items: [{ itemType: "KEYWORD", itemName }] }` |
 | `updateItem(listId, itemId, version, { name?, checked? })` | `PUT /{listId}/items/{itemId}?version=`, body `itemAttributesToUpdate` |
 | `deleteItem(listId, itemId, version)` | `DELETE /{listId}/items/{itemId}?version=` |
@@ -102,7 +103,7 @@ plan({ finta, alexa, snapshots }) → actions[]
 **Rows with no snapshot**
 - A Finta row with no snapshot is created on Alexa.
 - An Alexa item with no snapshot is created in Finta.
-- **First sync** (no snapshots yet for a pairing): before creating anything, match unmapped rows to unmapped items by case-insensitive name and checked state, and record them as pairs. Connecting must never create duplicates.
+- **Matching first:** on every run, before creating anything, unmapped rows and unmapped items are paired one-to-one by name (case-insensitive), preferring the same checked state. Connecting, or an add whose new ID couldn't be read, never creates duplicates.
 
 **Name comparison** ignores case and surrounding spaces, because Alexa often changes capitalization.
 
@@ -164,6 +165,7 @@ CREATE TABLE alexa_items (
   alexa_item_id TEXT    NOT NULL,
   kind          TEXT    NOT NULL CHECK (kind IN ('item','task')),
   finta_id      INTEGER NOT NULL,                 -- shopping_items.id or tasks.id
+  finta_list_id INTEGER,                          -- shopping_lists.id for items; NULL for tasks
   name          TEXT    NOT NULL,                 -- snapshot from the last sync
   checked       INTEGER NOT NULL,
   version       INTEGER NOT NULL,
@@ -172,7 +174,7 @@ CREATE TABLE alexa_items (
 );
 ```
 
-`finta_id` has no foreign key because it points to one of two tables. When a Finta row is deleted, the next sync sees that its snapshot has no matching row, and that is the delete signal.
+`finta_id` has no foreign key because it points to one of two tables. A sync only uses snapshots whose `finta_list_id` matches the list currently paired with that Alexa list. Others (left over after changing the Shopping List pairing, or after deleting a Finta list) are dropped and never treated as deletions, so nothing on Alexa is lost. A deleted custom Finta list comes back on the next sync while the Alexa list still exists. To get rid of one, delete it in the Alexa app. When a Finta row is deleted, the next sync sees that its snapshot has no matching row, and that is the delete signal.
 
 `/api/export` already lists its tables one by one, so these two tables stay out of it. A test checks this.
 
@@ -228,7 +230,7 @@ All tests use `node:test` and the existing `test/helpers.js`.
   - Email, password and code flow, down to register.
   - Wrong-password and captcha pages give the right error codes.
   - A 401 refreshes once and then succeeds.
-  - Pagination.
+  - Site discovery from `api/welcome`, and the Cookie header on list calls.
 - `test/alexa-routes.test.js`:
   - A member can't connect or disconnect.
   - No response, including `GET /api/alexa`, contains token fields.

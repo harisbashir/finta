@@ -91,7 +91,7 @@ export function householdRoutes(r) {
       members: ctx.db.prepare('SELECT id, name, email, role FROM users WHERE household_id = ?').all(h),
       categories: all('categories'), recurring: all('recurring'), transactions: all('transactions'), goals: all('goals'),
       tasks: all('tasks'), shopping_lists: all('shopping_lists'), shopping_items: all('shopping_items'),
-      meals: all('meals'), assets: all('assets'), contacts: all('contacts'),
+      meals: all('meals'), assets: all('assets'), contacts: all('contacts'), tax_room: all('tax_room'),
     }, null, 2);
     const stamp = new Date().toISOString().slice(0, 10);
     return { $raw: body, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Content-Disposition': `attachment; filename="finta-export-${stamp}.json"` } };

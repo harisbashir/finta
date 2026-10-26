@@ -22,6 +22,7 @@ const accountSchema = {
   credit_limit: t.money({ label: 'credit limit' }),
   is_private: t.bool(),
   archived: t.bool(),
+  registered: t.oneOf(['rrsp', 'tfsa', 'fhsa', 'resp'], { label: 'registered type' }),
 };
 
 /** Can this member see this account's individual transactions? */
@@ -35,7 +36,7 @@ function present(a, bal, user, users) {
   const visible = canSeeAccount(a, user);
   return {
     id: a.id, name: a.name, type: a.type, institution: a.institution, last4: a.last4, owner_id: a.owner_id,
-    owner_name: a.owner_id ? users.get(a.owner_id)?.name : null, is_private: !!a.is_private, archived: !!a.archived,
+    owner_name: a.owner_id ? users.get(a.owner_id)?.name : null, is_private: !!a.is_private, archived: !!a.archived, registered: a.registered ?? null,
     credit_limit: a.credit_limit, balance, owed: OWES.includes(a.type) ? Math.max(0, -balance) : null,
     last_date: b?.last_date || null, count: visible ? b?.count || 0 : null,
     can_view: visible, can_edit: canEditAccount(a, user),
@@ -72,6 +73,7 @@ export function bankAccountRoutes(r) {
     const v = validate(ctx.body, accountSchema, { db: ctx.db, householdId: ctx.household.id });
     if (v.last4 && !/^\d{1,4}$/.test(v.last4)) throw bad('Last digits should be up to 4 numbers.', { field: 'last4' });
     if (!('owner_id' in ctx.body)) v.owner_id = ctx.user.id;
+    if (v.type !== 'investment') v.registered = null;   // RRSP/TFSA/FHSA/RESP only apply to investment accounts
     const current = validate(ctx.body, { current_balance: t.int(-100_000_000_000, 100_000_000_000, { label: 'balance' }) }).current_balance ?? 0;
     // People enter what a card *owes* as a positive number.
     v.opening_balance = OWES.includes(v.type) ? -Math.abs(current) : current;
@@ -94,6 +96,7 @@ export function bankAccountRoutes(r) {
     const v = validate(ctx.body, accountSchema, { db: ctx.db, householdId: ctx.household.id, partial: true });
     if ('name' in v && !v.name) throw bad('Add a name.', { field: 'name' });
     if ('owner_id' in v && a.owner_id !== ctx.user.id && a.owner_id !== null) throw forbidden();
+    if ((v.type || a.type) !== 'investment') v.registered = null;
     // "Current balance" re-anchors the account without touching transactions.
     if ('current_balance' in ctx.body) {
       const cur = validate(ctx.body, { current_balance: t.int(-100_000_000_000, 100_000_000_000, { required: true, label: 'balance' }) }).current_balance;

@@ -419,7 +419,7 @@ export function undoImport(db, householdId, importId) {
  * Spot things that repeat: the same merchant in at least 3 of the last 6 months (or every
  * week/two weeks), at a steady amount, not already tracked. Returns suggestions to accept in one tap.
  */
-export function recurringSuggestions(db, householdId, todayStr) {
+export function recurringSuggestions(db, householdId, todayStr, { limit = 12 } = {}) {
   const since = addDays(todayStr, -200);
   // Everyday spending repeats too (groceries every week) but isn't a bill. Only fixed-amount
   // repeats in those categories are worth suggesting.
@@ -465,5 +465,5 @@ export function recurringSuggestions(db, householdId, todayStr) {
         : /INSURANCE|INTACT|AVIVA|BELAIR|MANULIFE|SUN LIFE/.test(merchant) ? 'insurance' : 'bill',
     });
   }
-  return out.sort((a, b) => b.amount - a.amount).slice(0, 12);
+  return out.sort((a, b) => b.amount - a.amount).slice(0, limit);
 }

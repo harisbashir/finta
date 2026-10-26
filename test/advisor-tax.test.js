@@ -84,3 +84,32 @@ test('default tax year flips on May 1', () => {
   assert.equal(defaultTaxYear('2026-04-30'), 2025);
   assert.equal(defaultTaxYear('2026-05-01'), 2026);
 });
+
+test('joint registered accounts show on the Joint row', () => {
+  const { h } = setup();
+  const resp = h.account({ type: 'investment', registered: 'resp', owner_id: null, balance: 0 });
+  h.tx({ date: '2026-04-01', amount: 250000, direction: 'in', account_id: resp, is_transfer: 1 });
+  const joint = taxYear(h.db, h.hid, 2026).people.at(-1);
+  assert.deepEqual(joint.resp, { contributed: 250000, grant: 50000 });
+});
+
+test('dividends, interest and sales inside a plan are not contributions', () => {
+  const { h } = setup();
+  const tfsa = h.account({ type: 'investment', registered: 'tfsa', balance: 0 });
+  h.tx({ date: '2026-04-01', amount: 100000, direction: 'in', account_id: tfsa, is_transfer: 1 });
+  for (const d of ['DIVIDEND XYZ', 'INTEREST', 'DISTRIBUTION ABC FUND', 'SOLD 10 XYZ']) h.tx({ date: '2026-05-01', amount: 5000, direction: 'in', account_id: tfsa, description: d });
+  assert.equal(contrib(person(taxYear(h.db, h.hid, 2026), h.owner), 'tfsa').amount, 100000);
+});
+
+test('2023 and 2024 limits are the published ones', async () => {
+  const { limitsFor } = await import('../server/lib/advisor/limits.js');
+  assert.deepEqual([limitsFor(2023).tfsa, limitsFor(2023).rrsp, limitsFor(2023).estimate], [650000, 3078000, false]);
+  assert.deepEqual([limitsFor(2024).tfsa, limitsFor(2024).rrsp, limitsFor(2024).estimate], [700000, 3156000, false]);
+});
+
+test('CSV cells cannot start a spreadsheet formula', () => {
+  const { h } = setup();
+  h.db.prepare(`UPDATE users SET name = '=HYPERLINK("http://x")' WHERE id = ?`).run(h.owner);
+  const csv = taxCsv(taxYear(h.db, h.hid, 2026, { scope: 'me', userId: h.owner }));
+  assert.ok(csv.split('\n')[1].startsWith(`"'=HYPERLINK`), csv.split('\n')[1]);
+});

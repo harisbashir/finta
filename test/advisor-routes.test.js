@@ -101,3 +101,29 @@ test('/api/today warns when my chequing is heading below $0', async () => {
   assert.equal(t.data.cashWarning.level, 'danger');
   assert.ok(t.data.cashWarning.low.balance < 0);
 });
+
+test('clearing room removes it; negative room is refused', async () => {
+  await owner.raw('PUT', '/api/advisor/room', { user_id: ownerId, year: 2027, kind: 'fhsa', room: 800000 });
+  assert.equal((await owner.raw('PUT', '/api/advisor/room', { user_id: ownerId, year: 2027, kind: 'fhsa', room: -5 })).status, 400);
+  assert.equal((await owner.raw('PUT', '/api/advisor/room', { user_id: ownerId, year: 2027, kind: 'fhsa', room: null })).status, 200);
+  assert.equal(srv.db.prepare(`SELECT COUNT(*) AS n FROM tax_room WHERE year = 2027`).get().n, 0);
+});
+
+test('Today only warns when chequing goes below $0, not when it is merely low', async () => {
+  srv.db.prepare('DELETE FROM recurring').run();
+  srv.db.prepare(`UPDATE accounts SET archived = 1 WHERE type = 'chequing'`).run();
+  await owner.post('/api/accounts', { name: 'Low chq', type: 'chequing', current_balance: 5000 });
+  assert.equal((await owner.get('/api/today')).data.cashWarning, null);
+});
+
+test('Looks Recurring never shows notes from someone else’s private account', async () => {
+  const acc = await owner.post('/api/accounts', { name: 'Owner private', type: 'chequing', is_private: true });
+  for (const d of ['2026-06-07', '2026-07-07', '2026-08-07', '2026-09-07']) {
+    srv.db.prepare(`INSERT INTO transactions (household_id, date, amount, direction, account_id, note, merchant)
+      VALUES (?, ?, 8800, 'out', ?, 'HIDDEN-NOTE', 'HIDDEN THING')`).run(hid, d, acc.data.id);
+  }
+  const r = await member.get('/api/money/suggestions');
+  assert.equal(r.status, 200);
+  assert.doesNotMatch(JSON.stringify(r.data), /HIDDEN/);
+  assert.match(JSON.stringify((await owner.get('/api/money/suggestions')).data), /HIDDEN/, 'the owner still sees their own');
+});

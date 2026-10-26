@@ -274,7 +274,10 @@ export function bankAccountRoutes(r) {
   });
 
   // ── "Looks recurring" ──
-  r.get('/api/money/suggestions', (ctx) => recurringSuggestions(ctx.db, ctx.household.id, today(ctx)));
+  // Only from accounts this person may see line by line: names and notes come from the rows.
+  r.get('/api/money/suggestions', (ctx) => recurringSuggestions(ctx.db, ctx.household.id, today(ctx), {
+    accountIds: ctx.db.prepare('SELECT * FROM accounts WHERE household_id = ?').all(ctx.household.id).filter((a) => canSeeAccount(a, ctx.user)).map((a) => a.id),
+  }));
 
   r.post('/api/money/suggestions/accept', (ctx) => {
     const v = validate(ctx.body, {

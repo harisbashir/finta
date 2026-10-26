@@ -110,3 +110,24 @@ test('just short of the target reads as short everywhere (no "3.0 months · good
   assert.equal(m.status, 'fair');
   assert.match(m.next, /Set aside/);
 });
+
+test('a partial first month does not count as a month', () => {
+  const h = makeHousehold();
+  const chq = h.account({ type: 'chequing', balance: 900000 });
+  h.tx({ date: '2026-03-20', amount: 1000, category: 'Groceries', account_id: chq });
+  const r = healthCheck(h.db, h.hid, TODAY);
+  assert.equal(r.months, 0);
+  assert.ok(r.metrics.every((m) => m.status === 'unknown'));
+  h.tx({ date: '2026-01-20', amount: 1000, category: 'Groceries', account_id: chq });
+  assert.equal(healthCheck(h.db, h.hid, TODAY).months, 2, 'Jan started on the 20th, so Feb and Mar');
+});
+
+test('in my scope, the window starts when my own data starts', () => {
+  const { h } = base();
+  const theirs = h.account({ type: 'chequing', owner_id: h.member, balance: 0 });
+  h.tx({ date: '2025-10-01', amount: 1000, category: 'Groceries', account_id: theirs });
+  const mine = h.account({ type: 'chequing', owner_id: h.member, balance: 0 });
+  h.tx({ date: '2026-03-01', amount: 1000, category: 'Groceries', account_id: mine });
+  assert.equal(healthCheck(h.db, h.hid, TODAY, { scope: 'me', userId: h.member }).months, 3, 'Sam has data from October');
+  assert.equal(healthCheck(h.db, h.hid, TODAY, { scope: 'me', userId: h.owner }).months, 3);
+});

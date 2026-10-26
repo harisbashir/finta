@@ -419,15 +419,16 @@ export function undoImport(db, householdId, importId) {
  * Spot things that repeat: the same merchant in at least 3 of the last 6 months (or every
  * week/two weeks), at a steady amount, not already tracked. Returns suggestions to accept in one tap.
  */
-export function recurringSuggestions(db, householdId, todayStr, { limit = 12 } = {}) {
+export function recurringSuggestions(db, householdId, todayStr, { limit = 12, accountIds = null } = {}) {
   const since = addDays(todayStr, -200);
   // Everyday spending repeats too (groceries every week) but isn't a bill. Only fixed-amount
   // repeats in those categories are worth suggesting.
   const everyday = new Set(db.prepare(`SELECT id FROM categories WHERE household_id = ? AND name IN
     ('Groceries','Dining Out','Transport','Shopping','Entertainment','Personal Care','Health','Gifts','Travel','Kids','Pets','Other Income','Fees & Interest')`).all(householdId).map((c) => c.id));
-  const rows = db.prepare(`SELECT merchant, note, date, amount, direction, category_id FROM transactions
+  const rows = db.prepare(`SELECT merchant, note, date, amount, direction, category_id, account_id FROM transactions
     WHERE household_id = ? AND account_id IS NOT NULL AND date >= ? AND recurring_id IS NULL AND is_transfer = 0
-      AND goal_id IS NULL AND merchant IS NOT NULL ORDER BY date`).all(householdId, since);
+      AND goal_id IS NULL AND merchant IS NOT NULL ORDER BY date`).all(householdId, since)
+    .filter((r) => !accountIds || accountIds.includes(r.account_id));
   const ignored = new Set(db.prepare(`SELECT pattern FROM rules WHERE household_id = ? AND kind = 'ignore_recurring'`).all(householdId).map((r) => r.pattern));
   const tracked = db.prepare('SELECT name, payee FROM recurring WHERE household_id = ?').all(householdId).flatMap((r) => tokens(`${r.name} ${r.payee || ''}`));
   const groups = new Map();

@@ -49,6 +49,7 @@ export async function mountAdvisor(v) {
         ${f.basis === 'no-chequing' ? html`<div class="group"><div class="row"><span class="body"><span class="title">Add a chequing account to see where it’s heading.</span></span></div></div>` : html`
           ${f.warning?.level === 'danger' ? html`<div class="form-error">${icon('circle-alert')}<span>Chequing may go below $0 around ${short(f.warning.date)}. Move money in, or move a bill, before then.</span></div>` : ''}
           ${f.warning?.level === 'watch' ? html`<p class="text-warn">Chequing gets low, under $100, around ${short(f.warning.date)}.</p>` : ''}
+          ${f.asOf < S.today ? html`<p class="text-2">Your latest statement ends ${short(f.asOf)}, so the forecast starts there. Import newer statements for a sharper picture.</p>` : ''}
           <div class="card"><div id="cf-chart"></div></div>
           <p class="section-foot">${f.basis === 'full'
             ? `Bills and paydays, repeating payments Finta noticed, and a typical day from your recent history (about ${money(f.typical.out, { short: true })} out and ${money(f.typical.in, { short: true })} in).`
@@ -62,7 +63,7 @@ export async function mountAdvisor(v) {
       <section class="section">
         <div class="section-head"><h2>Fees & Interest</h2><span class="caps">${money(fees.total)} in 12 months</span></div>
         ${fees.byKind.length ? html`<div class="group">${fees.byKind.map((k) => html`<div class="row"><span class="body"><span class="title">${k.label}</span>
-          <span class="sub">${k.kind === 'fx' ? 'Estimated from purchases in other currencies' : `${k.count} ${k.count === 1 ? 'charge' : 'charges'}`}</span></span><span class="trail"><span class="amount">${money(k.amount)}</span></span></div>`)}</div>`
+          <span class="sub">${k.kind === 'fx' && fees.fxEstimated ? 'Includes an estimate: 2.5% of purchases in other currencies' : `${k.count} ${k.count === 1 ? 'charge' : 'charges'}`}</span></span><span class="trail"><span class="amount">${money(k.amount)}</span></span></div>`)}</div>`
           : html`<div class="group"><div class="row"><span class="body"><span class="title">No bank fees or interest in the last 12 months.</span></span></div></div>`}
         ${fees.suggestions.length ? html`<div class="group-label">Ways to Pay Less</div><div class="group">${fees.suggestions.map((s) => html`<div class="row"><span class="body"><span class="title">${s.text}</span></span></div>`)}</div>` : ''}
         ${NOTE}
@@ -79,7 +80,7 @@ export async function mountAdvisor(v) {
             ${p.contributions.map((c) => html`<div class="row"><span class="body"><span class="title">${PLAN[c.kind]} contributions: ${money(c.amount)}</span>
               <span class="sub">${year} limit ${money(c.limit, { short: true })}${c.remaining != null ? ` · ${money(c.remaining)} of your room left` : ' · enter your room from your CRA notice'}</span></span>
               ${p.user_id === S.user.id || owner ? html`<input class="room-input" inputmode="decimal" data-room="${c.kind}" data-user="${p.user_id}" value="${c.room != null ? (c.room / 100).toFixed(2) : ''}" placeholder="Room" aria-label="${PLAN[c.kind]} room for ${year}">` : ''}</div>`)}
-            ${p.resp.contributed ? html`<div class="row"><span class="body"><span class="title">RESP contributions: ${money(p.resp.contributed)}</span><span class="sub">About ${money(p.resp.grant)} in government grant (CESG, 20% of the first $2,500)</span></span></div>` : ''}
+            ${p.resp.contributed ? html`<div class="row"><span class="body"><span class="title">RESP contributions: ${money(p.resp.contributed)}</span><span class="sub">About ${money(p.resp.grant)} in government grant (CESG estimate: 20% of the first $2,500 per child each year)</span></span></div>` : ''}
           </div>`)}
         <p class="section-foot">RRSP counts contributions from March 2 to March 1 of the next year. Mark an investment account as RRSP, TFSA, FHSA or RESP to track it. Room comes from your CRA notice of assessment.</p>
         ${NOTE}
@@ -102,10 +103,11 @@ export async function mountAdvisor(v) {
     }));
     $('[data-year]', v.el)?.addEventListener('change', async (e) => { year = Number(e.target.value); await load(); });
     $$('[data-room]', v.el).forEach((input) => input.addEventListener('change', async () => {
-      const dollars = Number(String(input.value).replace(/[^\d.]/g, ''));
-      if (!Number.isFinite(dollars)) return;
+      const text = String(input.value).replace(/[^\d.]/g, '');
+      const dollars = Number(text);
+      if (text && !Number.isFinite(dollars)) return;
       try {
-        await api.put('/api/advisor/room', { user_id: Number(input.dataset.user), year, kind: input.dataset.room, room: Math.round(dollars * 100) });
+        await api.put('/api/advisor/room', { user_id: Number(input.dataset.user), year, kind: input.dataset.room, room: text ? Math.round(dollars * 100) : null });
         await load();
       } catch (err) { toast(err.message, { error: true }); }
     }));

@@ -170,7 +170,7 @@ export function homeRoutes(r) {
       today: d, month: { ...summary, schedule: undefined, start, end },
       bills, tasks, meals, lists, warranties, trials,
       reminders: upcomingReminders(ctx.db, hid, { withinMs: 48 * 3600e3 }),
-      cashWarning: (({ warning, low }) => (warning ? { ...warning, low } : null))(forecast(ctx.db, hid, d, { scope: 'me', userId: ctx.user.id, viewerId: ctx.user.id })),
+      cashWarning: (({ warning, low }) => (warning?.level === 'danger' ? { ...warning, low } : null))(forecast(ctx.db, hid, d, { scope: 'me', userId: ctx.user.id, viewerId: ctx.user.id, includeJoint: true })),
       needsReview: reviewCount(ctx),
       netWorth: netWorth(ctx.db, hid, 'household', ctx.user.id),
     };

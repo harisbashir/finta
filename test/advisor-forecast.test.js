@@ -52,7 +52,7 @@ test('a paid bill is not counted again; one overdue in the last week lands today
   h.tx({ date: '2026-04-10', amount: 250000, account_id: chq, recurring_id: rent, due_date: '2026-04-10' });
   const r = forecast(h.db, h.hid, TODAY);
   assert.equal(point(r, TODAY), 1000000 - 250000 - 5000);
-  assert.equal(r.events.find((e) => e.name === 'Phone').date, TODAY);
+  assert.equal(r.events.find((e) => e.name === 'Phone').date, '2026-04-12', 'data ends Apr 10, so Apr 12 is still ahead of it');
 });
 
 test('typical day: 90 days of everyday money, without bills or moves between your own chequing', () => {
@@ -113,4 +113,62 @@ test('repeats on someone else’s private account are not named to a viewer, but
   assert.ok(owner.typical.out > 1000, 'their repeat still moves the balance');
   const member = forecast(h.db, h.hid, TODAY, { viewerId: h.member });
   assert.ok(JSON.stringify(member.events).includes('Private Payee'));
+});
+
+// ── Review fixes ──
+test('privacy: a note on someone else’s private row never names an event, in any scope', () => {
+  const h = makeHousehold();
+  const mine = h.account({ type: 'chequing', balance: 500000 });
+  const theirs = h.account({ type: 'chequing', balance: 500000, owner_id: h.member, is_private: 1 });
+  for (let m = 1; m <= 4; m++) h.tx({ date: addMonths('2025-12-05', m), amount: 20000, account_id: theirs, merchant: 'E TRANSFER', note: 'Private note', category: 'Other' });
+  h.tx({ date: '2026-04-01', amount: 5000, account_id: mine, merchant: 'E TRANSFER', note: 'e-transfer', category: 'Other' });
+  for (const scope of ['household', 'me']) {
+    const r = forecast(h.db, h.hid, TODAY, { scope, userId: h.owner, viewerId: h.owner });
+    assert.ok(!JSON.stringify(r).includes('Private note'), scope);
+  }
+});
+
+test('repeating card purchases are not charged to chequing', () => {
+  const h = makeHousehold();
+  const chq = h.account({ type: 'chequing', balance: 500000 });
+  const card = h.account({ type: 'credit_card', balance: 0 });
+  for (let m = 1; m <= 4; m++) h.tx({ date: addMonths('2025-12-05', m), amount: 120000, account_id: card, merchant: 'BEST BUY', note: 'Best Buy', category: 'Subscriptions' });
+  h.tx({ date: '2026-04-02', amount: 3000, account_id: chq, merchant: 'BEST BUY', note: 'Best Buy', category: 'Shopping' });
+  const r = forecast(h.db, h.hid, TODAY);
+  assert.equal(r.events.filter((e) => e.name === 'Best Buy').length, 0);
+});
+
+test('my forecast includes joint chequing and joint bills', () => {
+  const h = makeHousehold();
+  h.account({ type: 'chequing', balance: 1000, owner_id: null });
+  h.recurring({ name: 'Rent', amount: 250000, start_date: '2026-01-01', owner_id: null });
+  const r = forecast(h.db, h.hid, TODAY, { scope: 'me', userId: h.owner, viewerId: h.owner, includeJoint: true });
+  assert.equal(r.warning.level, 'danger');
+});
+
+test('stale data: the forecast starts from the last day there is data for', () => {
+  const h = makeHousehold();
+  const chq = h.account({ type: 'chequing', balance: 300000 });
+  h.tx({ date: '2026-03-25', amount: 1000, account_id: chq, category: 'Groceries' });   // last import ended Mar 25
+  h.recurring({ name: 'Phone', amount: 5000, start_date: '2026-01-02' });              // Apr 2 came due after the data ends
+  const r = forecast(h.db, h.hid, TODAY);
+  assert.equal(r.asOf, '2026-03-25');
+  assert.equal(r.points[0].date, '2026-03-25');
+  assert.ok(r.events.some((e) => e.name === 'Phone' && e.date === '2026-04-02'));
+});
+
+test('a repeat not seen for well over a period stops being projected', () => {
+  const h = makeHousehold();
+  const chq = h.account({ type: 'chequing', balance: 500000 });
+  h.tx({ date: '2026-04-10', amount: 1000, account_id: chq, category: 'Groceries' });
+  for (let m = 0; m < 4; m++) h.tx({ date: addMonths('2025-09-05', m), amount: 1500, account_id: chq, merchant: 'OLD STREAMING', note: 'Old Streaming', category: 'Subscriptions' });
+  assert.equal(forecast(h.db, h.hid, TODAY).events.filter((e) => e.name === 'Old Streaming').length, 0);
+});
+
+test('tracking "Amazon Prime" keeps other Amazon spending in the typical day', () => {
+  const h = makeHousehold();
+  const chq = h.account({ type: 'chequing', balance: 2000000 });
+  for (let i = 0; i < 90; i++) h.tx({ date: addDays(TODAY, -i), amount: 1000, account_id: chq, merchant: 'AMAZON', category: 'Shopping' });
+  h.recurring({ name: 'Amazon Prime', kind: 'subscription', amount: 999, start_date: '2026-01-03' });
+  assert.equal(forecast(h.db, h.hid, TODAY).typical.out, 1000);
 });

@@ -5,23 +5,25 @@
 //   Card utilisation = what's owed on cards and lines of credit ÷ their limits
 // Measured over the last 3 full months (fewer if that's all the history there is).
 import { TX_JOINS, scopeFilter, accountBalances } from '../finance.js';
-import { monthRange, addMonths } from '../dates.js';
+import { monthRange, addMonths, addDays } from '../dates.js';
 import { dollars } from './format.js';
 
 const ESSENTIAL = ['Housing', 'Utilities', 'Groceries', 'Insurance', 'Transport', 'Health'];
 const LIQUID = ['chequing', 'savings', 'cash'];
 const REVOLVING = ['credit_card', 'line_of_credit'];
+const GRACE_DAYS = 3;   // statements can start a day or two into the month
 const round = (x, places = 3) => Math.round(x * 10 ** places) / 10 ** places;
 
-/** The last (up to) 3 full months before today's month that have any history. */
-function window(db, householdId, todayStr) {
-  const first = db.prepare('SELECT MIN(date) AS d FROM transactions WHERE household_id = ?').get(householdId).d;
+/** The last (up to) 3 full months before today's month that history covers from (about) their first day. */
+function window(db, householdId, todayStr, scope, userId) {
+  const sc = scopeFilter(scope, userId);
+  const first = db.prepare(`SELECT MIN(t.date) AS d ${TX_JOINS} WHERE t.household_id = ? ${sc.sql}`).get(householdId, ...sc.args).d;
   if (!first) return null;
   const thisMonth = todayStr.slice(0, 7) + '-01';
   const months = [];
   for (let i = 1; i <= 3; i++) {
     const m = addMonths(thisMonth, -i);
-    if (m.slice(0, 7) < first.slice(0, 7)) break;
+    if (first > addDays(m, GRACE_DAYS)) break;   // a month that history starts partway through doesn't count
     months.unshift(m.slice(0, 7));
   }
   if (!months.length) return null;
@@ -30,7 +32,7 @@ function window(db, householdId, todayStr) {
 
 export function healthCheck(db, householdId, todayStr, { scope = 'household', userId = null } = {}) {
   const target = db.prepare('SELECT emergency_months FROM households WHERE id = ?').get(householdId)?.emergency_months ?? 3;
-  const w = window(db, householdId, todayStr);
+  const w = window(db, householdId, todayStr, scope, userId);
   const mine = (row) => scope !== 'me' || row.owner_id === userId;
 
   const bal = accountBalances(db, householdId);

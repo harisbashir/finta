@@ -12,10 +12,12 @@ const KINDS = [
   ['overdraft_nsf', 'Overdraft & NSF', /\b(OVERDRAFT|NSF|NON-?SUFFICIENT|OD INTEREST|OD FEE)\b/],
   ['annual_fees', 'Annual fees', /\bANNUAL FEE\b/],
   ['atm', 'ATM fees', /\b(ATM FEE|ABM FEE|NETWORK FEE|INTERAC FEE)\b/],
+  ['fx', 'Foreign exchange', /\b(FOREIGN TRANSACTION FEE|FOREIGN EXCHANGE FEE|FX FEE|CURRENCY CONVERSION)\b/],
+  ['late', 'Late fees', /\bLATE (PAYMENT )?FEE\b/],
   ['account_fees', 'Account fees', /\b(SERVICE CHARGE|SERVICE FEE|MONTHLY FEE|MTHLY|ACCOUNT FEE|PLAN FEE|MONTHLY FIXED|FRAIS|TRANSACTION FEE|E-TRANSFER FEE)\b/],
   ['interest', 'Interest', /\b(INTEREST|INTERETS|INT CHARGED|PURCHASE INT)\b/],
 ];
-const LABELS = Object.fromEntries([...KINDS.map(([k, l]) => [k, l]), ['fx', 'Foreign exchange (est.)']]);
+const LABELS = { ...Object.fromEntries(KINDS.map(([k, l]) => [k, l])), fx: 'Foreign exchange' };
 
 const SUGGEST = {
   account_fees: (x) => `A no-fee chequing account would save about ${x} a year.`,
@@ -24,6 +26,7 @@ const SUGGEST = {
   annual_fees: (x) => `Check that your card’s rewards are worth more than its ${x} annual fee.`,
   atm: (x) => `Using your own bank’s ATMs, or cash back at checkout, would save about ${x} a year.`,
   fx: (x) => `A card with no foreign-transaction fee would save about ${x} a year.`,
+  late: (x) => `Autopay for at least the minimum payment would have avoided ${x} in late fees.`,
 };
 
 export function feesReport(db, householdId, todayStr, { scope = 'household', userId = null } = {}) {
@@ -46,7 +49,7 @@ export function feesReport(db, householdId, todayStr, { scope = 'household', use
     add(kind, t.direction === 'out' ? t.amount : -t.amount);   // money back (rebates, discounts) offsets the same kind
   }
 
-  const byKind = [...KINDS.map(([k]) => k), 'fx']
+  const byKind = [...new Set(KINDS.map(([k]) => k))]
     .map((kind) => ({ kind, label: LABELS[kind], amount: Math.max(0, sums.get(kind) || 0), count: counts.get(kind) || 0 }))
     .filter((k) => k.amount > 0);
   return {

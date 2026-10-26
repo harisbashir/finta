@@ -3,6 +3,8 @@
 //   RRSP: CRA "MP, DB, RRSP, DPSP, ALDA, TFSA limits" ($32,490 for 2025, $33,810 for 2026).
 //   FHSA: $8,000 a year, $40,000 lifetime since 2023. RESP: CESG is 20% of the first $2,500 a year.
 const BY_YEAR = {
+  2023: { tfsa: 650000, rrsp: 3078000 },
+  2024: { tfsa: 700000, rrsp: 3156000 },
   2025: { tfsa: 700000, rrsp: 3249000 },
   2026: { tfsa: 700000, rrsp: 3381000 },
 };

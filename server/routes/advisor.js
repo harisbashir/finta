@@ -38,9 +38,14 @@ export function advisorRoutes(r) {
   r.put('/api/advisor/room', (ctx) => {
     const v = validate(ctx.body, {
       user_id: t.ref('users', { required: true, label: 'person' }), year: t.int(2009, 2100, { required: true }),
-      kind: t.oneOf(['rrsp', 'tfsa', 'fhsa'], { required: true }), room: t.money({ required: true, label: 'room' }),
+      kind: t.oneOf(['rrsp', 'tfsa', 'fhsa'], { required: true }), room: t.money({ label: 'room' }),
     }, { db: ctx.db, householdId: ctx.household.id });
     if (v.user_id !== ctx.user.id && ctx.user.role !== 'owner') throw forbidden('You can only enter your own room.');
+    if (v.room == null) {   // an emptied field forgets the room
+      ctx.db.prepare('DELETE FROM tax_room WHERE household_id = ? AND user_id = ? AND year = ? AND kind = ?').run(ctx.household.id, v.user_id, v.year, v.kind);
+      return { ok: true };
+    }
+    if (v.room < 0) throw bad('Room can’t be negative.', { field: 'room' });
     ctx.db.prepare(`INSERT INTO tax_room (household_id, user_id, year, kind, room) VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(household_id, user_id, year, kind) DO UPDATE SET room = excluded.room`).run(ctx.household.id, v.user_id, v.year, v.kind, v.room);
     return { ok: true };

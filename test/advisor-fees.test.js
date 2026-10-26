@@ -72,3 +72,14 @@ test('suggestions only for kinds that cost something, with no brand names', () =
   for (const s of r.suggestions) assert.doesNotMatch(s.text, /\b(Tangerine|Simplii|EQ Bank|Wealthsimple|RBC|TD|CIBC|BMO|Scotia)\b/);
   assert.equal(r.suggestions.find((s) => s.kind === 'account_fees').saving, 1595);
 });
+
+test('FX and late fees are their own kinds, not account fees', () => {
+  const { fee, h } = setup();
+  fee('FOREIGN TRANSACTION FEE', 250);
+  fee('LATE FEE', 2900);
+  const r = feesReport(h.db, h.hid, TODAY);
+  assert.equal(kind(r, 'account_fees'), 0);
+  assert.equal(kind(r, 'fx'), 250);
+  assert.equal(kind(r, 'late'), 2900);
+  assert.ok(!r.suggestions.some((s) => s.kind === 'account_fees'));
+});

@@ -66,7 +66,7 @@ export function healthCheck(db, householdId, todayStr, { scope = 'household', us
   const metrics = [];
   // Emergency fund
   if (n && monthlyEssential > 0) {
-    const value = round(liquid / monthlyEssential, 1);
+    const value = Math.floor((liquid / monthlyEssential) * 10) / 10;   // round down: 2.97 months is not yet 3
     const short = target * monthlyEssential - liquid;
     const perMonth = Math.ceil(short / 12 / 2500) * 2500;
     metrics.push({

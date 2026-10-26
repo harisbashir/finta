@@ -102,3 +102,11 @@ test('scope me leaves out the other person’s accounts and debts', () => {
   const mine = metric(healthCheck(h.db, h.hid, TODAY, { scope: 'me', userId: h.owner }), 'emergency').value;
   assert.ok(all > mine);
 });
+
+test('just short of the target reads as short everywhere (no "3.0 months · good" with advice to save)', () => {
+  const { h } = base({ chequing: 594000 + 600000, savings: 0 });   // liquid 594,000 = 2.97 months
+  const m = metric(healthCheck(h.db, h.hid, TODAY), 'emergency');
+  assert.equal(m.display, '2.9 months');
+  assert.equal(m.status, 'fair');
+  assert.match(m.next, /Set aside/);
+});

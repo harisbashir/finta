@@ -1,6 +1,15 @@
 # Changelog
 
-## 1.2.1 — 2026-10-26
+## 1.3.0 — 2026-10-26
+
+### New: Advisor (Money → Advisor)
+- **Health check:** emergency fund in months (target set per household, 3 by default), savings rate, debt payments as a share of income, and card utilisation, each with a target and one next step.
+- **Cash-flow forecast:** chequing over the next 60 days from your bills and paydays, repeating payments Finta noticed, and a typical day from your recent history. Today warns before chequing goes below $0.
+- **Fees & interest:** a year of account fees, overdraft and NSF charges, interest, annual and ATM fees, plus an estimate of foreign-exchange costs, with ways to pay less.
+- **Tax year (Canada):** donations, medical, tuition and kids totals per person, and RRSP, TFSA, FHSA and RESP contributions compared with your room and the yearly limits. Export as CSV.
+- Investment accounts can be marked RRSP, TFSA, FHSA or RESP.
+
+
 
 ### Fixed
 - **CIBC card statements no longer get a huge balance.** The masked card number in CIBC's card exports (`4500********1234`) was read as a balance column.

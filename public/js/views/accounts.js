@@ -157,6 +157,7 @@ export async function accountSheet({ account = null, type = null, onSaved, onDel
           ${fText('name', 'Name', account?.name || '', { placeholder: { chequing: 'Everyday Chequing', savings: 'Savings', credit_card: 'Visa', line_of_credit: 'Line of Credit', cash: 'Wallet', investment: 'TFSA' }[k], required: true, maxlength: 60, autofocus: !account })}
           ${fText('institution', 'Bank', account?.institution || '', { placeholder: 'TD, RBC, Scotiabank…', maxlength: 60 })}
           ${fText('last4', 'Last 4 Digits', account?.last4 || '', { placeholder: 'Optional', inputmode: 'numeric', maxlength: 4 })}
+          ${k === 'investment' ? fSelect('registered', 'Registered', [['', 'None'], ['rrsp', 'RRSP'], ['tfsa', 'TFSA'], ['fhsa', 'FHSA'], ['resp', 'RESP']], account?.registered ?? '') : ''}
         </div>
         <div class="group">
           ${fMoney('current_balance', t.owes ? 'Amount Owed' : 'Balance', current, { placeholder: '0.00' })}

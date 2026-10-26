@@ -7,6 +7,7 @@ import { completeTask } from '../lib/tasks.js';
 import { materializeAutopay, monthSummary, upcomingBills, netWorth } from '../lib/finance.js';
 import { reviewCount } from './money.js';
 import { tx } from '../db.js';
+import { upcomingReminders } from './alexa.js';
 
 const REPEATS = ['none', 'daily', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly'];
 
@@ -167,6 +168,7 @@ export function homeRoutes(r) {
     return {
       today: d, month: { ...summary, schedule: undefined, start, end },
       bills, tasks, meals, lists, warranties, trials,
+      reminders: upcomingReminders(ctx.db, hid, { withinMs: 48 * 3600e3 }),
       needsReview: reviewCount(ctx),
       netWorth: netWorth(ctx.db, hid, 'household', ctx.user.id),
     };

@@ -2,7 +2,7 @@
 import { api } from '../api.js';
 import { html, icon, $, $$, S, relDay, relPhrase, fmtDate, sheet, toast, fText, fSelect, fDate, fTextarea, REPEAT_LABEL, initials, emptyState, enableSwipe, addDays } from '../ui.js';
 import { getMembers } from '../store.js';
-import { alexaSync } from '../alexa.js';
+import { alexaSync, reminderSection } from '../alexa.js';
 
 const AREAS = { chore: ['Chore', 'sparkles', 'blue'], maintenance: ['Maintenance', 'wrench', 'orange'], errand: ['Errand', 'car', 'green'], admin: ['Admin', 'file-text', 'indigo'], other: ['Other', 'tag', 'gray'] };
 
@@ -94,9 +94,10 @@ export async function mount(v) {
   let tasks = [];
   const members = await getMembers();
   let loaded = false;
+  let reminders = [];
   const alexaLine = alexaSync(v, { rerender: () => { if (loaded) render(); }, reload: () => load() });
   const load = async () => {
-    tasks = await api.get('/api/tasks');
+    [tasks, reminders] = await Promise.all([api.get('/api/tasks'), api.get('/api/alexa/reminders').catch(() => [])]);
     if (!v.alive()) return;
     loaded = true;
     render();
@@ -139,6 +140,7 @@ export async function mount(v) {
           <div class="group">${groups[k].map((t) => taskRow(t))}</div>
         </section>`)
         : html`<div class="group">${emptyState('list-checks', filter === 'all' ? 'No tasks yet' : 'Nothing here', 'Add chores, home maintenance and errands. Repeating tasks come back on their own.')}</div>`}
+      ${filter === 'all' ? reminderSection(reminders) : ''}
       <p class="section-foot">Tip: repeating tasks like “Replace furnace filter” move to their next date when you tick them off.</p>
       ${alexaLine()}`);
 

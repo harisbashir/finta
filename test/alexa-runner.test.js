@@ -13,6 +13,7 @@ function fakeAlexa() {
   const lists = [{ id: 'S', type: 'SHOP', name: null, items: [] }, { id: 'T', type: 'TODO', name: null, items: [] }];
   const calls = [];
   const fail = {};
+  const reminders = [];
   let n = 0;
   let gate = null;
   const find = (id) => lists.find((l) => l.id === id);
@@ -35,9 +36,10 @@ function fakeAlexa() {
       if (checked !== undefined) it.checked = checked;
       it.version++;
     },
+    async getReminders() { calls.push('reminders'); if (fail.reminders) throw fail.reminders; return reminders; },
     async deleteItem(id, itemId) { calls.push('delete'); find(id).items = find(id).items.filter((i) => i.itemId !== itemId); },
   });
-  return { lists, calls, fail, setGate: (p) => { gate = p; }, client: { session }, shop: () => find('S').items, todo: () => find('T').items };
+  return { lists, calls, fail, reminders, setGate: (p) => { gate = p; }, client: { session }, shop: () => find('S').items, todo: () => find('T').items };
 }
 
 let db, hid, groceries, fake, runner;
@@ -277,4 +279,18 @@ test('a custom Alexa list named like the Shopping List pairing gets its own "(Al
   assert.deepEqual(items(own.id), [{ name: 'flour', checked: 0 }]);
   assert.deepEqual(items(), [{ name: 'milk', checked: 0 }]);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM shopping_lists').get().n, 2);
+});
+
+test('reminders are saved on each run', async () => {
+  fake.reminders.push({ id: 'r1', label: 'call mom', at: 1000, repeats: false });
+  await runner.syncNow(hid);
+  assert.deepEqual(JSON.parse(link().reminders), [{ id: 'r1', label: 'call mom', at: 1000, repeats: false }]);
+});
+
+test('a reminders failure does not stop list sync', async () => {
+  fake.fail.reminders = new AlexaError('network', 'reminders down');
+  fake.shop().push({ itemId: 'a', name: 'milk', checked: false, version: 1 });
+  await runner.syncNow(hid);
+  assert.deepEqual(items(), [{ name: 'milk', checked: 0 }]);
+  assert.match(link().last_error, /reminders down/);
 });

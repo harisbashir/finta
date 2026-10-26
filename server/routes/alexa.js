@@ -6,6 +6,16 @@ import { audit } from '../lib/session.js';
 import { AlexaError } from '../lib/alexa/client.js';
 
 const PENDING_MS = 5 * 60000;
+const REMINDER_GRACE_MS = 30 * 60000;   // a reminder that just went off stays visible for a bit
+
+/** Alexa reminders due from now until `withinMs` from now (all upcoming if omitted). Safe fields only. */
+export function upcomingReminders(db, householdId, { now = Date.now(), withinMs = Infinity } = {}) {
+  const row = db.prepare('SELECT reminders FROM alexa_links WHERE household_id = ?').get(householdId);
+  let list = [];
+  try { list = JSON.parse(row?.reminders || '[]'); } catch { /* treat as none */ }
+  return list.filter((r) => r.at && r.at >= now - REMINDER_GRACE_MS && r.at <= now + withinMs)
+    .map(({ label, at, repeats }) => ({ label, at, repeats: !!repeats }));
+}
 
 export function alexaRoutes(r, app) {
   const limiter = new RateLimiter({ windowMs: 15 * 60000, max: 5 });
@@ -68,6 +78,8 @@ export function alexaRoutes(r, app) {
     }
     return complete(ctx, p, code);
   });
+
+  r.get('/api/alexa/reminders', (ctx) => upcomingReminders(ctx.db, ctx.household.id, { now: now() }));
 
   r.post('/api/alexa/sync', (ctx) => {
     // Opening Lists or Tasks asks for a 'view' sync (skipped if one ran in the last minute); Sync Now always runs.

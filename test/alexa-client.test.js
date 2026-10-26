@@ -56,6 +56,15 @@ before(async () => {
         extensions: { device_info: { device_serial_number: 'X' }, customer_info: { user_id: 'CUST1', home_region: 'NA' } },
       } } });
     }
+    if (p === '/api/notifications') {
+      const base = { deviceSerialNumber: 'SER', deviceType: 'T', rRuleData: { nextTriggerTimes: null, recurrenceRules: null }, recurringPattern: null };
+      return json({ notifications: [
+        { ...base, id: 'r2', type: 'Reminder', status: 'ON', reminderLabel: 'take out recycling', alarmTime: 2000, triggerTime: 2000, recurringPattern: 'XXXX-WE' },
+        { ...base, id: 'r1', type: 'Reminder', status: 'ON', reminderLabel: 'call mom', alarmTime: 1000, triggerTime: 1000 },
+        { ...base, id: 'r3', type: 'Reminder', status: 'OFF', reminderLabel: 'done already', alarmTime: 500 },
+        { ...base, id: 'a1', type: 'Alarm', status: 'ON', alarmTime: 700 },
+      ] });
+    }
     if (p === '/api/welcome') return json({ alexaHostName: 'alexa.amazon.ca' }, 200, ['csrf=fromwelcome; Path=/']);
     if (p === '/auth/token') return json({ response: { tokens: { cookies: { '.amazon.ca': [{ Name: 'at-acbca', Value: '"web2"' }, { Name: 'session-token', Value: 'SESSTOK2' }] } } } });
     const lists = '/alexashoppinglists/api/v2/lists';
@@ -76,7 +85,7 @@ before(async () => {
 after(() => new Promise((r) => srv.close(r)));
 beforeEach(reset);
 
-const hosts = () => ({ signin: base, api: base, alexa: base, retail: () => base });
+const hosts = () => ({ signin: base, api: base, alexa: base, retail: () => base, alexaFor: () => base });
 const newClient = (opts = {}) => createAlexaClient({ hosts: hosts(), ...opts });
 const loginData = (extra = {}) => ({ serial: 'X', refreshToken: 'RT', cookies: { 'at-acbca': 'web1', 'session-token': 'SESSTOK' }, domain: 'amazon.ca', cookiesAt: Date.now(), ...extra });
 
@@ -239,4 +248,13 @@ test('when Amazon skips the code step, sign-in finishes without one', async () =
 test('a normal sign-in says a code is needed', async () => {
   const pending = await newClient().startLogin({ email: 'me@example.com', password: 'right' });
   assert.equal(pending.needsCode, true);
+});
+
+test('reminders: active ones only, soonest first, no device details', async () => {
+  const r = await newClient().session(loginData()).getReminders();
+  assert.deepEqual(r, [
+    { id: 'r1', label: 'call mom', at: 1000, repeats: false },
+    { id: 'r2', label: 'take out recycling', at: 2000, repeats: true },
+  ]);
+  assert.equal(log.at(-1).method, 'GET');
 });

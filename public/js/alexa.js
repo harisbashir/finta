@@ -1,6 +1,6 @@
 // Alexa sync status, shared by Lists, Tasks and Settings.
 import { api } from './api.js';
-import { html, fmtDate } from './ui.js';
+import { html, icon, fmtDate, relDay, S } from './ui.js';
 
 /** "just now", "3 min ago", "2 hr ago", "Oct 5" — from SQLite's UTC "YYYY-MM-DD HH:MM:SS". */
 export function ago(sqlUtc) {
@@ -11,6 +11,24 @@ export function ago(sqlUtc) {
   if (min < 60) return `${min} min ago`;
   if (min < 24 * 60) return `${Math.round(min / 60)} hr ago`;
   return fmtDate(new Date(t).toISOString().slice(0, 10), { month: 'short', day: 'numeric' });
+}
+
+/** "Today 8:00 PM", "Tomorrow 7:30 AM", "Friday 9:00 AM" for a reminder's time (ms). */
+export function reminderWhen(ms) {
+  const d = new Date(ms);
+  const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return `${relDay(iso, S.today)} ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+}
+
+/** Read-only rows for Alexa reminders. Dismissing happens on Alexa. */
+export function reminderSection(reminders, title = 'Alexa Reminders') {
+  if (!reminders?.length) return '';
+  return html`<section class="section">
+    <div class="section-head"><h2>${title}</h2></div>
+    <div class="group has-icons">${reminders.map((r) => html`<div class="row"><span class="tile" data-color="cyan">${icon('bell')}</span>
+      <span class="body"><span class="title">${r.label}</span><span class="sub">${reminderWhen(r.at)}${r.repeats ? html` · ${icon('repeat', 'icon-sm')}<span class="sr-only">Repeats</span>` : ''}</span></span></div>`)}</div>
+    <p class="section-foot">From Alexa. Change or dismiss them with Alexa.</p>
+  </section>`;
 }
 
 /**

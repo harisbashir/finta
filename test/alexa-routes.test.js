@@ -156,3 +156,18 @@ test('Sync Now asks for an immediate sync', async () => {
   await member.post('/api/alexa/sync', { now: true });
   assert.deepEqual(calls, [{ hid, reason: 'now' }]);
 });
+
+test('reminders: upcoming ones with safe fields; Today gets the next two days', async () => {
+  srv.db.prepare('DELETE FROM alexa_links').run();
+  const now = Date.now();
+  srv.db.prepare(`INSERT INTO alexa_links (household_id, site, email, login, reminders) VALUES (?, 'amazon.ca', 'a@example.com', '{}', ?)`).run(hid, JSON.stringify([
+    { id: 'old', label: 'long gone', at: now - 3 * 3600e3, repeats: false },
+    { id: 'r1', label: 'call mom', at: now + 3600e3, repeats: false },
+    { id: 'r2', label: 'dentist', at: now + 5 * 86400e3, repeats: true },
+  ]));
+  const r = await member.get('/api/alexa/reminders');
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.data, [{ label: 'call mom', at: now + 3600e3, repeats: false }, { label: 'dentist', at: now + 5 * 86400e3, repeats: true }]);
+  const t = await member.get('/api/today');
+  assert.deepEqual(t.data.reminders.map((x) => x.label), ['call mom']);
+});

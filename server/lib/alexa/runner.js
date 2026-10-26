@@ -56,6 +56,7 @@ export function createAlexaRunner({ db, makeClient = () => createAlexaClient(), 
     st(hid).lastRunAt = now();
     const login = JSON.parse(link.login);
     let firstError = null;
+    let reminders = null;
     try {
       client ??= makeClient();
       const session = client.session(login);
@@ -69,17 +70,23 @@ export function createAlexaRunner({ db, makeClient = () => createAlexaClient(), 
           firstError ??= err;
         }
       }
+      try {
+        reminders = JSON.stringify(await session.getReminders());
+      } catch (err) {
+        if (err.code === 'auth') throw err;
+        firstError ??= err;
+      }
     } catch (err) {
       firstError = err;
     }
     if (!alive(hid)) return;
     if (firstError) log.warn(`[alexa] household ${hid} ${firstError.code || 'error'}: ${firstError.message}`);
-    db.prepare(`UPDATE alexa_links SET login = ?, cookies_at = ?, status = ?,
+    db.prepare(`UPDATE alexa_links SET login = ?, cookies_at = ?, status = ?, reminders = COALESCE(?, reminders),
         last_sync_at = CASE WHEN ? THEN last_sync_at ELSE datetime('now') END,
         last_error = ?, last_error_at = CASE WHEN ? IS NULL THEN last_error_at ELSE datetime('now') END
       WHERE household_id = ?`)
       .run(JSON.stringify(login), login.cookiesAt ? new Date(login.cookiesAt).toISOString() : null,
-        firstError?.code === 'auth' ? 'reconnect' : 'ok',
+        firstError?.code === 'auth' ? 'reconnect' : 'ok', reminders,
         firstError && !firstError.code ? 1 : 0,
         firstError ? String(firstError.message).slice(0, 300) : null, firstError ? 1 : null, hid);
   }

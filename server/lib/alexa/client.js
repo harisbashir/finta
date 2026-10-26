@@ -25,6 +25,7 @@ export const DEFAULT_HOSTS = {
   api: 'https://api.amazon.com',
   alexa: 'https://alexa.amazon.com',
   retail: (domain) => `https://www.${domain}`,
+  alexaFor: (domain) => `https://alexa.${domain}`,
 };
 
 export class AlexaError extends Error {
@@ -277,9 +278,9 @@ export function createAlexaClient({ fetch = globalThis.fetch, hosts = DEFAULT_HO
   }
 
   function session(login) {
-    async function call(method, path, { query, body } = {}) {
+    async function call(method, path, { query, body, url: fullUrl } = {}) {
       if (!login.cookiesAt || now() - login.cookiesAt > COOKIE_MAX_AGE_MS) await refreshCookies(login);
-      const url = `${hosts.retail(login.domain)}${LISTS_PATH}/${path}${query ? `?${new URLSearchParams(query)}` : ''}`;
+      const url = fullUrl || `${hosts.retail(login.domain)}${LISTS_PATH}/${path}${query ? `?${new URLSearchParams(query)}` : ''}`;
       const once = () => send(url, {
         method, body: method === 'GET' ? undefined : JSON.stringify(body ?? {}),   // Amazon refuses list calls without a body
         jar: login.cookies,
@@ -315,6 +316,20 @@ export function createAlexaClient({ fetch = globalThis.fetch, hosts = DEFAULT_HO
         if (name !== undefined) update.push({ type: 'itemName', value: name });
         if (checked !== undefined) update.push({ type: 'itemStatus', value: checked ? 'COMPLETE' : 'ACTIVE' });
         await call('PUT', `${encodeURIComponent(listId)}/items/${encodeURIComponent(itemId)}`, { query: { version }, body: { itemAttributesToUpdate: update, itemAttributesToRemove: [] } });
+      },
+      /** Active Alexa reminders, soonest first: { id, label, at (ms), repeats }. Read-only. */
+      async getReminders() {
+        const json = await call('GET', null, { url: `${hosts.alexaFor(login.domain)}/api/notifications` });
+        if (!Array.isArray(json.notifications)) throw new AlexaError('api', 'Alexa sent reminders in an unexpected format.');
+        return json.notifications
+          .filter((n) => n.type === 'Reminder' && n.status === 'ON')
+          .map((n) => ({
+            id: String(n.id),
+            label: String(n.reminderLabel || 'Reminder').slice(0, 200),
+            at: Number(n.rRuleData?.nextTriggerTimes?.[0] ?? n.triggerTime ?? n.alarmTime) || null,
+            repeats: !!(n.recurringPattern || n.rRuleData?.recurrenceRules?.length || n.rRuleData?.frequency),
+          }))
+          .sort((a, b) => (a.at ?? Infinity) - (b.at ?? Infinity));
       },
       async deleteItem(listId, itemId, version) {
         await call('DELETE', `${encodeURIComponent(listId)}/items/${encodeURIComponent(itemId)}`, { query: { version } });

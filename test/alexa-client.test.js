@@ -1,7 +1,7 @@
 import { test, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { createAlexaClient, AlexaError } from '../server/lib/alexa/client.js';
+import { createAlexaClient, AlexaError, DEFAULT_HOSTS } from '../server/lib/alexa/client.js';
 
 // A fake Amazon: sign-in pages, register, token refresh, welcome and the lists API.
 const form = (action, inner, attrs = 'name="signIn"') => `<html><body><form ${attrs} method="post" action="${action}">
@@ -213,4 +213,14 @@ test('an unexpected page is described for the log without any values', async () 
     assert.doesNotMatch(e.diag, /me@example\.com|captcha/, 'no user values');
     return true;
   });
+});
+
+test('sign-in always starts on amazon.com, like the Alexa app; the lists site comes from welcome', async () => {
+  assert.equal(DEFAULT_HOSTS.signin, 'https://www.amazon.com');
+  assert.equal(DEFAULT_HOSTS.alexa, 'https://alexa.amazon.com');
+  const c = newClient();
+  const login = await c.finishLogin(await c.startLogin({ email: 'me@example.com', password: 'right' }), '123456');
+  const reg = JSON.parse(log.find((r) => r.path === '/auth/register').body);
+  assert.equal(reg.cookies.domain, '.amazon.com');
+  assert.equal(login.domain, 'amazon.ca', 'from alexaHostName');
 });

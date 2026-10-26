@@ -17,10 +17,12 @@ const TIMEOUT_MS = 20000;
 const COOKIE_MAX_AGE_MS = 12 * 3600e3;
 const LISTS_PATH = '/alexashoppinglists/api/v2/lists';
 
+// Like the Alexa app, sign-in always happens on amazon.com, whatever the country; the account's own
+// lists site (amazon.ca for Canada) is then read from alexa.amazon.com/api/welcome.
 export const DEFAULT_HOSTS = {
-  signin: 'https://www.amazon.ca',
+  signin: 'https://www.amazon.com',
   api: 'https://api.amazon.com',
-  alexa: 'https://alexa.amazon.ca',
+  alexa: 'https://alexa.amazon.com',
   retail: (domain) => `https://www.${domain}`,
 };
 
@@ -185,7 +187,7 @@ export function createAlexaClient({ fetch = globalThis.fetch, hosts = DEFAULT_HO
   async function register(code, pending) {
     const body = {
       requested_extensions: ['device_info', 'customer_info'],
-      cookies: { website_cookies: [], domain: '.amazon.ca' },
+      cookies: { website_cookies: [], domain: '.amazon.com' },
       registration_data: {
         domain: 'Device', app_version: APP_VERSION, device_type: DEVICE_TYPE,
         device_name: `%FIRST_NAME%'s%DUPE_STRATEGY_1ST%${APP_NAME}`,
@@ -215,7 +217,7 @@ export function createAlexaClient({ fetch = globalThis.fetch, hosts = DEFAULT_HO
       adpToken: t.mac_dms?.adp_token,
       devicePrivateKey: t.mac_dms?.device_private_key,
       cookies,
-      domain: 'amazon.ca',
+      domain: 'amazon.com',
       customerId: ok.extensions?.customer_info?.user_id || null,
       cookiesAt: now(),
     };
@@ -236,7 +238,7 @@ export function createAlexaClient({ fetch = globalThis.fetch, hosts = DEFAULT_HO
     // always does this outside amazon.com).
     const res = await send(`${hosts.alexa}/api/welcome`, { jar: { ...login.cookies } });
     const host = res.ok ? (await res.json().catch(() => ({}))).alexaHostName : null;
-    login.domain = host ? String(host).replace(/^alexa\./, '') : 'amazon.ca';
+    login.domain = host ? String(host).replace(/^alexa\./, '') : 'amazon.com';
     await refreshCookies(login);
     // Alexa hands out the csrf cookie the lists API expects back as a header.
     await send(`${hosts.alexa}/api/welcome`, { jar: login.cookies });

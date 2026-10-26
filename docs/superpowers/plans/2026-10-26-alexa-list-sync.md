@@ -26,7 +26,7 @@
 - Amazon request timeout: **20 s**. Cookies refresh when older than **12 h**, or once after a 401 or 403.
 - Conflict, where both sides changed: **Alexa wins**.
 - Amazon app name in register and token calls: `Finta`. Device type `A2IVLV5VM2W81`, app version `2.2.663733.0`, OS version `18.5`, software version `35602678`. These are the library's values.
-- Sign-in site `https://www.amazon.ca`. Global API `https://api.amazon.com`. Alexa site discovery `https://alexa.amazon.ca/api/welcome`. Language `en-CA`.
+- Sign-in site `https://www.amazon.com` (always, as in the library). Global API `https://api.amazon.com`. Alexa site discovery `https://alexa.amazon.com/api/welcome`. Language `en-CA`.
 - Finta name limits: shopping item 80 characters, task title 120 characters. Names pulled from Alexa are trimmed to fit.
 - Match the code style of the codebase: 2-space indentation, single quotes, brief `//` comments, `t.*` validators, `tx()` for transactions.
 

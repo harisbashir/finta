@@ -17,7 +17,7 @@ Out of scope: Echo announcements, an official Alexa skill, HTTP/2 push, creating
 ## Constraints
 
 - **Unofficial API.** Amazon removed third-party list access on 2024-07-01. Finta uses the private API used by the Alexa app, following the open-source `aioamazondevices` library (the one Home Assistant's Alexa Devices integration uses). Amazon can change it at any time. Everything Amazon-specific stays in one file so a breakage needs a fix in one place.
-- **Account:** amazon.ca, two-step verification by text message. Sign-in must work with SMS codes and with authenticator-app codes.
+- **Account:** amazon.ca, two-step verification by text message. Sign-in still happens on amazon.com (the Alexa app's sign-in only exists there; amazon.ca answers 404), and the lists site is discovered afterwards. Sign-in must work with SMS codes and with authenticator-app codes.
 - **No npm dependencies.** Use `fetch`, `node:crypto`, and HTML form parsing with regex.
 - **Isolation.** A failing sync must never break the rest of Finta or slow down a request.
 - One Amazon connection per household. Only household owners can connect, disconnect or change Alexa settings.
@@ -45,7 +45,7 @@ The only module that talks to Amazon. Ported from `aioamazondevices` (`login.py`
    - Submit the code form with `otpCode`, `mfaSubmit=Submit` and `rememberDevice=false`.
    - Read `openid.oa2.authorization_code` from the redirect URL. Don't follow the redirect to `/ap/maplanding`; read it from the `Location` header.
    - POST `https://api.amazon.com/auth/register` (global endpoint) with the registration body from `aioamazondevices`. Use `requested_token_type` values `bearer`, `mac_dms`, `website_cookies` and `store_authentication_cookie`.
-   - Find the account's Alexa site: GET `https://alexa.amazon.ca/api/welcome` and read `alexaHostName` (for example `alexa.amazon.ca`). The retail domain is that host with `alexa` replaced by `www`. If it differs from the sign-in domain, refresh cookies for it.
+   - Find the account's Alexa site: GET `https://alexa.amazon.com/api/welcome` and read `alexaHostName` (for example `alexa.amazon.ca`). The retail domain is that host with `alexa` replaced by `www`. If it differs from the sign-in domain, refresh cookies for it.
    - Return the stored login data: refresh token, access token and its expiry, ADP token, device private key, website cookies, `session-token` cookie, device serial, customer ID and retail domain.
 
 **Session**
